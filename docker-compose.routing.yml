@@ -1,0 +1,12 @@
+# Routage routier auto-hébergé (OSRM, licence BSD-2). Données : voir `npm run routing:setup`.
+# Port hôte 56500 (hors 54xxx et 5632x), uniquement sur 127.0.0.1.
+services:
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    container_name: leadforge-osrm
+    command: osrm-routed --algorithm mld --max-table-size 300 /data/lyon.osrm
+    volumes:
+      - ./data/routing:/data:ro
+    ports:
+      - "127.0.0.1:56500:5000"
+    restart: unless-stopped

@@ -1,0 +1,71 @@
+/* LeadForge : noir bleuté, gris froid, bleu électrique franc. Sombre = défaut (next-themes), clair = .light */
+:root {
+  color-scheme: dark;
+  --background: #05070d;
+  --foreground: #f5f7fb;
+  --card: #0b0f1a;
+  --card-foreground: #f5f7fb;
+  --popover: #0e1322;
+  --muted: #111728;
+  --muted-foreground: #8a93a6;
+  --border: rgba(255, 255, 255, 0.09);
+  --input: rgba(255, 255, 255, 0.18);
+  --ring: #5b80ff;
+  --accent: #2b59ff;
+  --accent-hover: #4170ff;
+  --accent-foreground: #ffffff;
+  --accent-soft: rgba(43, 89, 255, 0.16);
+  --link: #86a2ff;
+  --destructive: #e5483b;
+  --destructive-foreground: #ffffff;
+  --destructive-text: #ff7a6e;
+  --success: #2fa866;
+  --success-text: #4cc983;
+  --warning: #d9962b;
+  --warning-text: #e8b052;
+
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+
+  --shadow-sm: none;
+  --shadow-md: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 32px 80px -24px rgba(0, 0, 0, 0.85);
+  --shadow-glow: none;
+
+  --space-page: clamp(1rem, 3vw, 2rem);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 360ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.light,
+[data-theme="light"] {
+  color-scheme: light;
+  --background: #f4f6f9;
+  --foreground: #0b0f1a;
+  --card: #ffffff;
+  --card-foreground: #0b0f1a;
+  --popover: #ffffff;
+  --muted: #e9edf3;
+  --muted-foreground: #55607a;
+  --border: #dbe0e9;
+  --input: #aeb7c8;
+  --ring: #2b59ff;
+  --accent: #2b59ff;
+  --accent-hover: #1f45d6;
+  --accent-foreground: #ffffff;
+  --accent-soft: rgba(43, 89, 255, 0.1);
+  --link: #1f45d6;
+  --destructive: #d6372b;
+  --destructive-text: #b82a20;
+  --success: #1f9254;
+  --success-text: #17703f;
+  --warning: #b7791f;
+  --warning-text: #8a5a00;
+
+  --shadow-md: 0 10px 28px -14px rgba(11, 15, 26, 0.25);
+  --shadow-lg: 0 28px 70px -28px rgba(11, 15, 26, 0.35);
+}

@@ -1,0 +1,128 @@
+/* Landing publique. Tokens uniquement ; bleu franc, jamais de dérive vers le violet. */
+html { scroll-behavior: smooth; }
+
+/* Fond de hero : nappes bleues floues qui dérivent lentement (CSS pur, pas de shader). */
+.mk-fluid {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--background);
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+}
+.mk-fluid i {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  filter: blur(70px);
+  will-change: transform;
+}
+.mk-fluid i:nth-child(1) { width: 70vw; height: 46vw; left: -12vw; top: -10vw; background: #0a2bd6; opacity: 0.75; animation: mk-drift-a 22s ease-in-out infinite alternate; }
+.mk-fluid i:nth-child(2) { width: 55vw; height: 40vw; right: -14vw; top: 4vw; background: #1747f0; opacity: 0.5; animation: mk-drift-b 26s ease-in-out infinite alternate; }
+.mk-fluid i:nth-child(3) { width: 40vw; height: 24vw; left: 30vw; top: -6vw; background: #0b1b8c; opacity: 0.9; animation: mk-drift-c 18s ease-in-out infinite alternate; }
+.light .mk-fluid i:nth-child(1), [data-theme="light"] .mk-fluid i:nth-child(1) { opacity: 0.38; background: #5b80ff; }
+.light .mk-fluid i:nth-child(2), [data-theme="light"] .mk-fluid i:nth-child(2) { opacity: 0.3; background: #7ea0ff; }
+.light .mk-fluid i:nth-child(3), [data-theme="light"] .mk-fluid i:nth-child(3) { opacity: 0.2; background: #2b59ff; }
+@keyframes mk-drift-a { to { transform: translate3d(14vw, 6vw, 0) scale(1.15); } }
+@keyframes mk-drift-b { to { transform: translate3d(-12vw, 8vw, 0) scale(0.9); } }
+@keyframes mk-drift-c { to { transform: translate3d(-10vw, 4vw, 0) scale(1.2); } }
+
+/* Entrée du hero : une seule séquence au chargement. */
+.mk-rise { animation: mk-rise 700ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 90ms); }
+@keyframes mk-rise { from { opacity: 0; transform: translateY(14px); } }
+
+/* Cadre de la maquette produit */
+.mk-frame {
+  border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+/* Carte à projecteur : le halo suit le pointeur (--mx, --my posés en JS). */
+.mk-spot { position: relative; isolation: isolate; }
+.mk-spot::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(360px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--accent) 38%, transparent), transparent 60%);
+  opacity: 0;
+  transition: opacity 250ms;
+  -webkit-mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  padding: 1px;
+}
+.mk-spot:hover::before { opacity: 1; }
+
+/* Démo du pipeline : boucle de 10 s. L'état de base (sans animation) est l'état final. */
+.mk-demo { --src: 62.5%; --dst: 87.5%; }
+.mk-demo-card { animation: mk-card 10s var(--ease-out) infinite; }
+.mk-demo-cursor { animation: mk-cursor 10s var(--ease-out) infinite; }
+.mk-demo-target { animation: mk-target 10s var(--ease-out) infinite; }
+.mk-demo-toast { animation: mk-toast 10s var(--ease-out) infinite; }
+@keyframes mk-card {
+  0%, 14% { transform: translate(0, 0); opacity: 1; box-shadow: none; z-index: 1; }
+  20% { transform: translate(0, -3px) scale(1.03); box-shadow: 0 18px 30px -12px rgba(0, 0, 0, 0.6); border-color: var(--accent); z-index: 5; }
+  38% { transform: translate(calc(100% + var(--gap, 8px)), -3px) scale(1.03); opacity: 1; z-index: 5; }
+  42%, 100% { transform: translate(calc(100% + var(--gap, 8px)), 0); opacity: 0; z-index: 5; }
+}
+@keyframes mk-cursor {
+  0% { transform: translate(90px, 70px); opacity: 0; }
+  6% { opacity: 1; }
+  14%, 40% { transform: translate(0, 0); opacity: 1; }
+  48%, 100% { transform: translate(0, 0); opacity: 0; }
+}
+@keyframes mk-target {
+  0%, 40% { opacity: 0; transform: translateY(-6px); }
+  46%, 100% { opacity: 1; transform: none; }
+}
+@keyframes mk-toast {
+  0%, 44% { opacity: 0; transform: translateY(10px); }
+  50%, 86% { opacity: 1; transform: none; }
+  94%, 100% { opacity: 0; transform: translateY(10px); }
+}
+/* Démos de la section « Voyez-le travailler » : boucle de 9 s, étapes décalées. L'état de base est l'état final. */
+.mk-d-item, .mk-d-dot { animation: 9s var(--ease-out) infinite; }
+@keyframes mk-d-s1 { 0%, 4% { opacity: 0; transform: translateY(8px); } 10%, 88% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: translateY(8px); } }
+@keyframes mk-d-s2 { 0%, 18% { opacity: 0; transform: translateY(8px); } 24%, 88% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: translateY(8px); } }
+@keyframes mk-d-s3 { 0%, 32% { opacity: 0; transform: translateY(8px); } 38%, 88% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: translateY(8px); } }
+@keyframes mk-d-s4 { 0%, 46% { opacity: 0; transform: translateY(8px); } 52%, 88% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: translateY(8px); } }
+@keyframes mk-d-s5 { 0%, 60% { opacity: 0; transform: translateY(8px); } 66%, 88% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: translateY(8px); } }
+/* Redémarrage d'une scène pilotée par horloge : pas de transition pendant la remise à zéro. */
+.mk-reset * { transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important; }
+  .mk-fluid i, .mk-demo-cursor, .mk-demo-toast { display: none !important; }
+  .mk-rise, .mk-demo-card, .mk-demo-target, .mk-d-item, .mk-d-dot, .mk-d-bar, .mk-d-route, .mk-d-pt, .mk-d-before { animation: none !important; }
+}
+
+/* Carte de la démo « moteur » : fond OpenStreetMap, couleurs par thème. */
+.mk-map {
+  --map-land: #0a0f1c; --map-park: #0e2a24; --map-water: #0c2a52; --map-bank: #12427a; --map-water-text: #5f8fd0;
+  --map-street: #1a2338; --map-road3: #232f4a; --map-road2: #2f3d60; --map-road1: #3c4d78; --map-motorway: #4f6396; --map-casing: #060a14;
+  --map-label: #7d89a6; --map-route-casing: #05070d;
+  background: var(--map-land);
+}
+.light .mk-map, [data-theme="light"] .mk-map {
+  --map-land: #eef0f4; --map-park: #cfe6d3; --map-water: #b9d6f2; --map-bank: #93bde6; --map-water-text: #3f76b3;
+  --map-street: #ffffff; --map-road3: #ffffff; --map-road2: #fff7e0; --map-road1: #ffe3a3; --map-motorway: #f5b866; --map-casing: #c9cfda;
+  --map-label: #5d6a85; --map-route-casing: #ffffff;
+}
+@keyframes mk-pin-drop {
+  0% { transform: translateY(-70px); opacity: 0; }
+  12% { opacity: 1; }
+  48% { transform: translateY(0); }
+  64% { transform: translateY(-14px); }
+  80% { transform: translateY(0); }
+  90% { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+@keyframes mk-ring { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(2.6); opacity: 0; } }
+@keyframes mk-radar { 0% { transform: scale(0.05); opacity: 0.9; } 100% { transform: scale(1); opacity: 0; } }
+@keyframes mk-shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+.mk-pin-drop { animation: mk-pin-drop 900ms cubic-bezier(0.33, 0, 0.67, 1) both; }
+.mk-ring { transform-box: fill-box; transform-origin: center; animation: mk-ring 800ms ease-out both; }
+.mk-radar { transform-box: fill-box; transform-origin: center; animation: mk-radar 1100ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.mk-shake { animation: mk-shake 500ms ease both; }
+@media (prefers-reduced-motion: reduce) { .mk-pin-drop, .mk-ring, .mk-radar, .mk-shake { animation: none !important; } }
