@@ -32,7 +32,7 @@ async function mkOrg(tag: string, extra: Record<string, unknown> = {}, members =
   orgs.push(id);
   await admin.from("statuses").insert({ org_id: id, name: "Nouveau", color: "#3b82f6", is_initial: true });
   const adminRole = (await admin.from("roles").insert({ org_id: id, name: "Admin", is_admin: true, is_system: true, permissions: [] }).select("id").single()).data!.id;
-  const userRole = (await admin.from("roles").insert({ org_id: id, name: "Membre", permissions: ["leads.create", "leads.edit", "leads.view_all"] }).select("id").single()).data!.id;
+  const userRole = (await admin.from("roles").insert({ org_id: id, name: "Collaborateur", permissions: ["leads.create", "leads.edit", "leads.view_all"] }).select("id").single()).data!.id;
   await admin.from("profiles").update({ provisioned_org: id }).eq("id", owner);
   await admin.from("memberships").insert({ org_id: id, user_id: owner, role_id: adminRole });
   const extraUsers: string[] = [];
@@ -103,20 +103,20 @@ describe("webhook Stripe : signature", () => {
 });
 
 describe("webhook Stripe : état de l'organisation", () => {
-  it("souscription : checkout terminé puis abonnement actif Pro (10 sièges), idempotent", async () => {
+  it("souscription : checkout terminé puis abonnement actif Pro (8 sièges), idempotent", async () => {
     const o = await mkOrg("flow");
     const co = event("checkout.session.completed", { mode: "subscription", client_reference_id: o.id, customer: cus(o.id), subscription: sid(o.id), metadata: { org_id: o.id } });
     expect(await (await send(co)).json()).toMatchObject({ result: "processed" });
     expect(await orgRow(o.id)).toMatchObject({ stripe_customer_id: cus(o.id), stripe_subscription_id: sid(o.id), plan: "trial" });
     const up = event("customer.subscription.updated", subObj(o.id));
     expect(await (await send(up)).json()).toMatchObject({ result: "processed" });
-    expect(await orgRow(o.id)).toMatchObject({ plan: "pro", subscription_status: "active", seat_limit: 10, cancel_at_period_end: false, past_due_since: null });
+    expect(await orgRow(o.id)).toMatchObject({ plan: "pro", subscription_status: "active", seat_limit: 8, cancel_at_period_end: false, past_due_since: null });
     expect(new Date((await orgRow(o.id)).current_period_end).toISOString()).toBe(new Date(1_950_000_000 * 1000).toISOString());
     // même événement rejoué : aucun nouvel effet
     expect(await (await send(up)).json()).toMatchObject({ result: "duplicate" });
     expect(await (await send(co)).json()).toMatchObject({ result: "duplicate" });
     expect((await admin.from("stripe_events").select("id").eq("org_id", o.id)).data).toHaveLength(2);
-    expect((await getEntitlement(o.id, true))).toMatchObject({ state: "active", writable: true, seatLimit: 10 });
+    expect((await getEntitlement(o.id, true))).toMatchObject({ state: "active", writable: true, seatLimit: 8 });
   });
   it("ordre : un événement plus ancien que le dernier appliqué est ignoré", async () => {
     const o = await mkOrg("order");

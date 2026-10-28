@@ -17,6 +17,8 @@ export interface RoleView {
   description: string | null;
   is_system: boolean;
   is_admin: boolean;
+  /** Rôle terrain (commercial) : a une zone d'intervention et reçoit des RDV répartis. */
+  is_field: boolean;
   system_key?: string | null;
   permissions: Permission[];
 }
@@ -27,6 +29,7 @@ export function RoleEditor({ role, allowed }: { role?: RoleView; allowed?: reado
   const [name, setName] = useState(role?.name ?? "");
   const [description, setDescription] = useState(role?.description ?? "");
   const [perms, setPerms] = useState<Permission[]>(role?.permissions ?? []);
+  const [isField, setIsField] = useState(role?.is_field ?? false);
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
 
@@ -34,12 +37,14 @@ export function RoleEditor({ role, allowed }: { role?: RoleView; allowed?: reado
 
   function toggle(p: Permission, on: boolean) {
     if (on && allowed && !allowed.includes(p)) return;
+    setError(undefined);
     setPerms((cur) => (on ? [...cur, p] : cur.filter((x) => x !== p)));
   }
 
   function save() {
+    setError(undefined);
     start(async () => {
-      const res = await saveRoleAction({ id: role?.id, name, description, permissions: perms });
+      const res = await saveRoleAction({ id: role?.id, name, description, permissions: perms, isField });
       if (res.ok) {
         toast.success(role ? "Rôle mis à jour." : "Rôle créé.");
         setOpen(false);
@@ -48,13 +53,14 @@ export function RoleEditor({ role, allowed }: { role?: RoleView; allowed?: reado
           setName("");
           setDescription("");
           setPerms([]);
+          setIsField(false);
         }
       } else setError(res.error);
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setError(undefined); }}>
       <DialogTrigger asChild>
         {role ? (
           <Button size="sm" variant="outline" aria-label={`Modifier ${role.name}`}><Pencil className="size-3.5" /> Modifier</Button>
@@ -73,11 +79,11 @@ export function RoleEditor({ role, allowed }: { role?: RoleView; allowed?: reado
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="r-name">Nom</Label>
-              <Input id="r-name" value={name} onChange={(e) => setName(e.target.value)} disabled={role?.is_system} />
+              <Input id="r-name" value={name} onChange={(e) => { setName(e.target.value); setError(undefined); }} disabled={role?.is_system} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="r-desc">Description</Label>
-              <Input id="r-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
+              <Input id="r-desc" value={description} onChange={(e) => { setDescription(e.target.value); setError(undefined); }} />
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -92,6 +98,13 @@ export function RoleEditor({ role, allowed }: { role?: RoleView; allowed?: reado
                 ))}
               </fieldset>
             ))}
+          </div>
+          <div className="flex items-start gap-2 rounded-lg border p-3">
+            <Checkbox id="r-field" checked={isField} onCheckedChange={(v) => { setIsField(v === true); setError(undefined); }} />
+            <div>
+              <Label htmlFor="r-field" className="cursor-pointer font-normal">Rôle terrain (commercial)</Label>
+              <p className="text-xs text-muted-foreground">Se déplace chez les clients : a une zone d&apos;intervention et reçoit des rendez-vous à la répartition. Nécessite « {PERMISSION_LABELS["appointments.manage_own"]} ». Décocher désactive les zones des membres concernés.</p>
+            </div>
           </div>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <Button className="w-full" onClick={save} loading={pending}>Enregistrer</Button>

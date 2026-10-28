@@ -82,6 +82,25 @@ export default async function OnboardingPage() {
           {sources.map((x) => <Badge key={x.id}>{x.name}</Badge>)}
         </CardContent>
       </Card>
+      {s.isAdmin && !s.org.parent_org_id && !s.org.org_type && (
+        <Card className="border-accent">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4" data-testid="onboarding-profile-missing">
+            <p className="text-sm">Dites-nous si vous êtes <strong>installateur</strong> ou <strong>régie</strong> : cela prépare vos équipes, vos poseurs et vos régies partenaires.</p>
+            <Button asChild size="sm"><Link href="/onboarding/activite">Répondre (1 minute)</Link></Button>
+          </CardContent>
+        </Card>
+      )}
+      {s.isAdmin && !s.org.parent_org_id && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle>Régies partenaires</CardTitle>
+            <Link href="/settings/partners" className="text-sm text-link hover:underline">Gérer</Link>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground" data-testid="onboarding-partners">
+            {s.org.org_type === "agency" ? "Vous gérez des sous-régies ? Créez-les : chacune a son espace, que seule elle voit, et vous y accédez à tout moment." : "Vous travaillez avec des régies ? Créez leur espace : elles prospectent pour vous, et vous voyez tout."}
+          </CardContent>
+        </Card>
+      )}
       <div className="fixed inset-x-0 bottom-16 z-20 flex flex-wrap items-center justify-center gap-3 border-t bg-background/90 p-4 backdrop-blur lg:static lg:bottom-auto lg:justify-start lg:border-0 lg:bg-transparent lg:p-0">
         <Button asChild size="lg"><Link href="/leads">Commencer <ArrowRight className="size-4" /></Link></Button>
         {canApply && !failed && <ApplyTemplateButton current={s.org.template} label="Changer de template" />}

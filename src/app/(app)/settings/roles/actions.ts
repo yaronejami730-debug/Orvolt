@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { RATE_LIMIT_MESSAGE, RULES } from "@/lib/rate-limit";
 import { allow } from "@/lib/rate-limit-server";
 import { isWritable } from "@/lib/billing/access";
+import { featureError } from "@/lib/billing/feature-guard";
 import { READ_ONLY_MESSAGE } from "@/lib/billing/entitlement";
 import { requireSession, sessionCan } from "@/lib/session";
 import { fieldErrors, firstError, roleSchema } from "@/lib/validation/auth";
@@ -27,9 +28,11 @@ export async function saveRoleAction(input: unknown): Promise<ActionResult> {
   if (!sessionCan(s, "roles.manage")) return DENIED;
   if (!(await allow("roles", s.user.id, RULES.sensitive))) return { ok: false, error: RATE_LIMIT_MESSAGE };
   if (!(await isWritable(s.org.id))) return { ok: false, error: READ_ONLY_MESSAGE };
+  const locked = await featureError(s.org.id, "custom_roles");
+  if (locked) return { ok: false, error: locked };
   const parsed = roleSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: firstError(parsed.error), fieldErrors: fieldErrors(parsed.error) };
-  const { id, name, description, permissions } = parsed.data;
+  const { id, name, description, permissions, isField } = parsed.data;
   const supabase = await createClient();
 
   if (id) {
@@ -37,13 +40,15 @@ export async function saveRoleAction(input: unknown): Promise<ActionResult> {
     if (!existing) return { ok: false, error: "Rôle introuvable." };
     if (existing.is_admin) return { ok: false, error: "Le rôle Super administrateur ne peut pas être modifié." };
     if (existing.system_key === "administrator" && !s.isAdmin) return { ok: false, error: "Seul le super administrateur peut modifier le rôle Administrateur." };
-    const patch = existing.is_system ? { description: description ?? null, permissions } : { name, description: description ?? null, permissions };
+    // is_field : si le rôle cesse d'être terrain (case décochée ou permission retirée), un trigger SQL désactive les zones
+    // de ses membres (20260202000001) ; la répartition ignore de toute façon les zones de non-terrain.
+    const patch = existing.is_system ? { description: description ?? null, permissions, is_field: isField } : { name, description: description ?? null, permissions, is_field: isField };
     const { data, error } = await supabase.from("roles").update(patch).eq("id", id).eq("org_id", s.org.id).select("id");
     if (error || !data?.length) return { ok: false, error: roleDbError(error?.code, error?.message, "Enregistrement impossible.") };
   } else {
     const { error } = await supabase
       .from("roles")
-      .insert({ org_id: s.org.id, name, description: description ?? null, permissions, is_system: false, is_admin: false });
+      .insert({ org_id: s.org.id, name, description: description ?? null, permissions, is_system: false, is_admin: false, is_field: isField });
     if (error) return { ok: false, error: roleDbError(error.code, error.message, "Création impossible.") };
   }
   revalidatePath("/settings/roles");
@@ -55,6 +60,8 @@ export async function deleteRoleAction(input: unknown): Promise<ActionResult> {
   if (!sessionCan(s, "roles.manage")) return DENIED;
   if (!(await allow("roles", s.user.id, RULES.sensitive))) return { ok: false, error: RATE_LIMIT_MESSAGE };
   if (!(await isWritable(s.org.id))) return { ok: false, error: READ_ONLY_MESSAGE };
+  const locked = await featureError(s.org.id, "custom_roles");
+  if (locked) return { ok: false, error: locked };
   const parsed = z.object({ id: z.uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: firstError(parsed.error) };
   const supabase = await createClient();

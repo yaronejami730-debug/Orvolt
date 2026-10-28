@@ -1,19 +1,17 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { FAQ } from "./faq-data";
 
-export function FaqAccordion() {
+export function FaqAccordion({ items = FAQ }: { items?: { q: string; a: string }[] }) {
   const [open, setOpen] = useState<number | null>(null);
-  const reduce = useReducedMotion();
   const uid = useId();
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const onKey = (e: React.KeyboardEvent, i: number) => {
-    const last = FAQ.length - 1;
+    const last = items.length - 1;
     const target = e.key === "ArrowDown" ? (i === last ? 0 : i + 1) : e.key === "ArrowUp" ? (i === 0 ? last : i - 1) : e.key === "Home" ? 0 : e.key === "End" ? last : null;
     if (target === null) return;
     e.preventDefault();
@@ -22,7 +20,7 @@ export function FaqAccordion() {
 
   return (
     <div className="divide-y border-y">
-      {FAQ.map((item, i) => {
+      {items.map((item, i) => {
         const isOpen = open === i;
         const bid = `${uid}-b${i}`;
         const pid = `${uid}-p${i}`;
@@ -43,22 +41,12 @@ export function FaqAccordion() {
                 <ChevronDown className={cn("size-5 shrink-0 text-muted-foreground transition-transform duration-200", isOpen && "rotate-180")} aria-hidden />
               </button>
             </h3>
-            <AnimatePresence initial={false}>
-              {isOpen && (
-                <motion.div
-                  id={pid}
-                  role="region"
-                  aria-labelledby={bid}
-                  initial={reduce ? false : { height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { height: 0, opacity: 0 }}
-                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                  className="overflow-hidden"
-                >
-                  <p className="pb-5 pr-10 text-sm leading-relaxed text-muted-foreground">{item.a}</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* Réponse toujours présente dans le HTML (indexable, FAQPage) ; repliée visuellement par une grille 0fr -> 1fr, retirée de l'arbre d'accessibilité tant qu'elle est fermée. */}
+            <div className={cn("grid transition-[grid-template-rows,visibility] duration-200 ease-out motion-reduce:transition-none", isOpen ? "grid-rows-[1fr] visible" : "invisible grid-rows-[0fr]")}>
+              <div id={pid} role="region" aria-labelledby={bid} className="overflow-hidden">
+                <p className="pb-5 pr-10 text-sm leading-relaxed text-muted-foreground">{item.a}</p>
+              </div>
+            </div>
           </div>
         );
       })}

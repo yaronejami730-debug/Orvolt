@@ -25,7 +25,10 @@ export function LoginForm() {
             <FieldError id="email-error" message={state.fieldErrors?.email} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Mot de passe</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Mot de passe</Label>
+              <Link href="/forgot" className="text-sm text-link hover:underline">Mot de passe oublié ?</Link>
+            </div>
             <Input id="password" name="password" type="password" autoComplete="current-password" required />
           </div>
           {state.error && !state.fieldErrors?.email && <p role="alert" className="text-sm text-destructive-text">{state.error}</p>}

@@ -6,6 +6,7 @@ export interface BillingOrg {
   subscription_status: string;
   trial_ends_at: string | null;
   seat_limit: number | null;
+  extra_seats?: number;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
   past_due_since: string | null;
@@ -31,6 +32,8 @@ export interface Entitlement {
   /** Fin du délai de grâce (paiement échoué). */
   graceEndsAt: Date | null;
   seatLimit: number | null;
+  /** Utilisateurs achetés en plus du plan. */
+  extraSeats: number;
   seatsUsed: number;
   /** Plus de membres actifs que de sièges (rétrogradation) : ajout bloqué, désactivation demandée. */
   seatsExceeded: boolean;
@@ -55,10 +58,11 @@ export function computeEntitlement(org: BillingOrg, seatsUsed: number, now = new
     state = "active";
     writable = true;
   } else if (status === "trialing") {
-    if (!trialEnd || trialEnd.getTime() > now.getTime()) {
+    // Essai sans date de fin = expiré (lecture seule), comme org_is_writable : coalesce(trial_ends_at, now()) > now() est faux.
+    if (trialEnd && trialEnd.getTime() > now.getTime()) {
       state = "trialing";
       writable = true;
-      trialDaysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - now.getTime()) / DAY)) : null;
+      trialDaysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now.getTime()) / DAY));
     } else {
       state = org.stripe_subscription_id ? "canceled" : "trial_expired";
     }
@@ -77,7 +81,7 @@ export function computeEntitlement(org: BillingOrg, seatsUsed: number, now = new
   const seatLimit = org.seat_limit;
   const over = seatLimit === null ? 0 : Math.max(0, seatsUsed - seatLimit);
   return {
-    state, writable, plan: org.plan, trialDaysLeft, graceEndsAt, seatLimit, seatsUsed,
+    state, writable, plan: org.plan, trialDaysLeft, graceEndsAt, seatLimit, extraSeats: org.extra_seats ?? 0, seatsUsed,
     seatsExceeded: over > 0, seatsOver: over,
     periodEnd: org.current_period_end ? new Date(org.current_period_end) : null,
     cancelAtPeriodEnd: org.cancel_at_period_end,

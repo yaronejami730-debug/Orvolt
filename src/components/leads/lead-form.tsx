@@ -64,7 +64,9 @@ export function LeadFormDialog({ meta, open, onOpenChange, defaultStatusId }: { 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV((c) => ({ ...c, [k]: e.target.value }));
   const bad = (k: string) => ({ "aria-invalid": fe[k] ? true : undefined });
 
-  function submit(e: React.FormEvent) {
+  const [dupWarning, setDupWarning] = useState<string>();
+
+  function submit(e: React.FormEvent, allowDuplicate = false) {
     e.preventDefault();
     const customOut: Record<string, unknown> = {};
     for (const f of fields) {
@@ -75,14 +77,17 @@ export function LeadFormDialog({ meta, open, onOpenChange, defaultStatusId }: { 
       const res = await createLeadAction({
         firstName: v.firstName ?? "", lastName: v.lastName ?? "", company: v.company || null, email: v.email || null, phone: v.phone || null,
         address: v.address || null, city: v.city || null, postalCode: v.postalCode || null,
-        value: v.value ? Number(v.value) : null, sourceId: v.sourceId || null, assignedTo: v.assignedTo || null,
-        statusId: v.statusId || defaultStatusId || null, custom: customOut,
+        value: v.value ? Number(v.value) : null, sourceId: v.sourceId || null, callDomainId: v.callDomainId || null, assignedTo: v.assignedTo || null,
+        statusId: v.statusId || defaultStatusId || null, custom: customOut, allowDuplicate,
       });
       if (res.ok) {
         toast.success("Lead créé.");
-        setV({}); setCustom({}); setFe({}); onOpenChange(false);
+        setV({}); setCustom({}); setFe({}); setDupWarning(undefined); onOpenChange(false);
         qc.invalidateQueries({ queryKey: ["leads"] });
+      } else if (res.code === "duplicate") {
+        setDupWarning(res.error);
       } else {
+        setDupWarning(undefined);
         setFe(res.fieldErrors ?? {});
         if (!res.fieldErrors) toast.error(res.error);
       }
@@ -114,6 +119,15 @@ export function LeadFormDialog({ meta, open, onOpenChange, defaultStatusId }: { 
                 {meta.sources.filter((s) => !s.archived).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
             </div>
+            {meta.callDomains.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="l-domain">Domaine</Label>
+                <Select id="l-domain" value={v.callDomainId ?? ""} onChange={set("callDomainId")}>
+                  <option value="">—</option>
+                  {meta.callDomains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="l-assigned">Assigné à</Label>
               <Select id="l-assigned" value={v.assignedTo ?? ""} onChange={set("assignedTo")}>
@@ -138,6 +152,15 @@ export function LeadFormDialog({ meta, open, onOpenChange, defaultStatusId }: { 
                 ))}
               </div>
             </fieldset>
+          )}
+          {dupWarning && (
+            <div role="alert" className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm" data-testid="lead-duplicate-warning">
+              <p>{dupWarning}</p>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant="outline" loading={pending} onClick={(e) => submit(e, true)}>Créer quand même</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setDupWarning(undefined)}>Modifier</Button>
+              </div>
+            </div>
           )}
           <Button type="submit" className="w-full" loading={pending}>Créer le lead</Button>
         </form>

@@ -1,21 +1,43 @@
+import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { SITE_NAME } from "@/lib/site";
 
-export function LogoMark({ className }: { className?: string }) {
+/** Hauteurs du mot-symbole : sm (menu compact, démo), md (en-têtes), lg (pages d'accueil des formulaires). */
+const HEIGHT = { sm: "h-9", md: "h-11", lg: "h-16" } as const;
+export type LogoSize = keyof typeof HEIGHT;
+
+/**
+ * Mot-symbole Orvolt seul (sans lien). `tone` choisit la version du fichier :
+ * - « auto » : noir, repassé en blanc en mode sombre ;
+ * - « on-dark » : toujours blanc (fonds sombres fixes, ex. le menu de l'application) ;
+ * - « on-light » : toujours noir.
+ */
+export function LogoImage({ className, size = "md", tone = "auto", priority = false }: { className?: string; size?: LogoSize; tone?: "auto" | "on-dark" | "on-light"; priority?: boolean }) {
   return (
-    <svg viewBox="0 0 32 32" className={cn("size-7", className)} aria-hidden>
-      <rect width="32" height="32" rx="8" fill="#2b59ff" />
-      <path d="M11 8v13.5a1.5 1.5 0 0 0 1.5 1.5H22" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="21.5" cy="11.5" r="2.2" fill="#fff" />
-    </svg>
+    <Image
+      src={tone === "on-dark" ? "/brand/orvolt-logo-white.png" : "/brand/orvolt-logo.png"}
+      alt={SITE_NAME}
+      width={1000}
+      height={564}
+      priority={priority}
+      className={cn(HEIGHT[size], "w-auto", tone === "auto" && "dark:invert", className)}
+    />
   );
 }
 
-export function Logo({ className }: { className?: string }) {
+/** Pastille éclair (petits formats : formulaires, écrans compacts). Blanche sur fond noir, inversée en mode sombre. */
+export function LogoMark({ className }: { className?: string }) {
+  return <Image src="/brand/orvolt-mark.png" alt="" aria-hidden width={128} height={128} className={cn("size-7 dark:invert", className)} />;
+}
+
+/** Logo cliquable (retour à l'accueil par défaut) ; `href={null}` pour l'afficher sans lien (onboarding, pages d'acquisition). */
+export function Logo({ className, size = "md", tone = "auto", href = "/", onClick, priority = false }: { className?: string; size?: LogoSize; tone?: "auto" | "on-dark" | "on-light"; href?: string | null; onClick?: () => void; priority?: boolean }) {
+  const image = <LogoImage size={size} tone={tone} priority={priority} />;
+  if (href === null) return <span className={cn("inline-flex items-center", className)}>{image}</span>;
   return (
-    <Link href="/" aria-label="LeadForge, accueil" className={cn("inline-flex items-center gap-2.5 rounded-md font-semibold tracking-[-0.03em]", className)}>
-      <LogoMark />
-      <span className="text-[17px]">LeadForge</span>
+    <Link href={href} onClick={onClick} aria-label={`${SITE_NAME}, accueil`} className={cn("inline-flex items-center rounded-md", className)}>
+      {image}
     </Link>
   );
 }

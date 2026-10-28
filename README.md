@@ -9,7 +9,7 @@ CRM de leads multi-entreprises (Next 15, Tailwind v4, Supabase, Stripe) avec mod
 
 **Ports** : app 3000 · API Supabase 56321 · Postgres 56322 · Studio 56323 · e-mails de test 56324 · stripe-mock 12111 · OSRM 56500.
 
-**Répartition automatique** (menu Répartition, confirmateur / admin / super admin) : `npm run routing:setup` (télécharge ~510 Mo Geofabrik Rhône-Alpes, découpe Lyon–Grenoble, ~620 Mo sur disque) puis `npm run routing:up` ; sans OSRM, repli étiqueté « estimation » (aperçu seulement). `ROUTING_PROVIDER=fake` pour tests sans réseau. Règle de charge par défaut : norme 4 RDV/jour, 5e seulement si le détour est faible, 6e jamais automatique (réglable dans Réglages > Membres). Trafic optionnel : `TRAFFIC_PROVIDER` + `TRAFFIC_API_KEY` (voir `.env.example`).
+**Répartition automatique** (menu Répartition, confirmateur / admin / super admin) : `npm run routing:setup` (télécharge ~510 Mo Geofabrik Rhône-Alpes, découpe Lyon–Grenoble, ~620 Mo sur disque) puis `npm run routing:up` ; sans OSRM, repli étiqueté « estimation » (aperçu seulement). `ROUTING_PROVIDER=fake` pour tests sans réseau. Règle de charge par défaut : norme 4 RDV/jour, 5e seulement si le détour est faible, 6e jamais automatique (réglable dans Réglages > Membres). Carte de l'aperçu : Leaflet + tuiles OpenStreetMap (`NEXT_PUBLIC_MAP_TILE_URL` pour changer de fournisseur ; **en production, utiliser un fournisseur de tuiles dédié**, les tuiles publiques OSM n'étant pas prévues pour une charge de production). Trafic optionnel : `TRAFFIC_PROVIDER` + `TRAFFIC_API_KEY` (voir `.env.example`).
 
 **Comptes de démo** (mot de passe commun `Demo1234!`, idempotent : `npm run db:seed` recrée les données) :
 

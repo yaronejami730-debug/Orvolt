@@ -1,71 +1,104 @@
-/* LeadForge : noir bleuté, gris froid, bleu électrique franc. Sombre = défaut (next-themes), clair = .light */
+/* LeadForge — thème « GoCardless » : encre #0F1521, surface #F9FAFB, cartes blanches, accent jaune réservé au CTA
+   de la sidebar. Clair = défaut (next-themes), sombre = .dark. Valeurs relevées sur manage.gocardless.com. */
 :root {
-  color-scheme: dark;
-  --background: #05070d;
-  --foreground: #f5f7fb;
-  --card: #0b0f1a;
-  --card-foreground: #f5f7fb;
-  --popover: #0e1322;
-  --muted: #111728;
-  --muted-foreground: #8a93a6;
-  --border: rgba(255, 255, 255, 0.09);
-  --input: rgba(255, 255, 255, 0.18);
-  --ring: #5b80ff;
-  --accent: #2b59ff;
-  --accent-hover: #4170ff;
-  --accent-foreground: #ffffff;
-  --accent-soft: rgba(43, 89, 255, 0.16);
-  --link: #86a2ff;
-  --destructive: #e5483b;
-  --destructive-foreground: #ffffff;
-  --destructive-text: #ff7a6e;
-  --success: #2fa866;
-  --success-text: #4cc983;
-  --warning: #d9962b;
-  --warning-text: #e8b052;
-
-  --radius-sm: 5px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 18px;
-
-  --shadow-sm: none;
-  --shadow-md: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
-  --shadow-lg: 0 32px 80px -24px rgba(0, 0, 0, 0.85);
-  --shadow-glow: none;
-
-  --space-page: clamp(1rem, 3vw, 2rem);
-  --duration-fast: 120ms;
-  --duration-base: 200ms;
-  --duration-slow: 360ms;
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.light,
-[data-theme="light"] {
   color-scheme: light;
-  --background: #f4f6f9;
-  --foreground: #0b0f1a;
+  --background: #f9fafb;
+  --foreground: #0f1521;
   --card: #ffffff;
-  --card-foreground: #0b0f1a;
+  --card-foreground: #0f1521;
   --popover: #ffffff;
-  --muted: #e9edf3;
-  --muted-foreground: #55607a;
-  --border: #dbe0e9;
-  --input: #aeb7c8;
-  --ring: #2b59ff;
-  --accent: #2b59ff;
-  --accent-hover: #1f45d6;
-  --accent-foreground: #ffffff;
-  --accent-soft: rgba(43, 89, 255, 0.1);
-  --link: #1f45d6;
-  --destructive: #d6372b;
-  --destructive-text: #b82a20;
-  --success: #1f9254;
-  --success-text: #17703f;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --border: #e5e7eb;
+  --input: #6b7280;
+  --ring: #0f1521;
+  --accent: #0f1521;
+  --accent-hover: #0f1521;
+  --accent-foreground: #f9fafb;
+  --accent-soft: rgba(15, 21, 33, 0.08);
+  --link: #0f1521;
+  --destructive: #c82828;
+  --destructive-foreground: #ffffff;
+  --destructive-text: #c82828;
+  --destructive-soft: #fee2e2;
+  --success: #007a4d;
+  --success-text: #007a4d;
+  --success-soft: #dbf2dd;
   --warning: #b7791f;
   --warning-text: #8a5a00;
+  --warning-soft: #fdf3dc;
+  --info-text: #2a67bf;
+  --info-soft: #dbeafe;
 
-  --shadow-md: 0 10px 28px -14px rgba(11, 15, 26, 0.25);
-  --shadow-lg: 0 28px 70px -28px rgba(11, 15, 26, 0.35);
+  /* Sidebar : toujours sombre, quel que soit le thème. */
+  --sidebar: #0f1521;
+  --sidebar-foreground: #f9fafb;
+  --sidebar-muted: #93918c;
+  --sidebar-hover: rgba(255, 255, 255, 0.125);
+  --sidebar-active: rgba(255, 255, 255, 0.08);
+  --sidebar-border: rgba(255, 255, 255, 0.125);
+  --sidebar-block: rgba(255, 255, 255, 0.05);
+
+  /* Jaune de marque : CTA de la sidebar uniquement. */
+  --brand: #ffe500;
+  --brand-hover: #fff281;
+  --brand-foreground: #0f1521;
+
+  --secondary-text: #374151;
+  --lavender: #eae8f9;
+  --purple: #5949cb;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 32px;
+
+  --shadow-sm: none;
+  --shadow-md: 0 1px 4px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 2px 12px rgba(30, 26, 20, 0.1);
+  --shadow-glow: none;
+
+  --space-page: clamp(1rem, 4vw, 4rem);
+  --duration-fast: 100ms;
+  --duration-base: 150ms;
+  --duration-slow: 300ms;
+  --ease-out: cubic-bezier(0.5, 0, 0, 1);
+}
+
+.dark,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0f1521;
+  --foreground: #f9fafb;
+  --card: #161c29;
+  --card-foreground: #f9fafb;
+  --popover: #161c29;
+  --muted: #1e2535;
+  --muted-foreground: #9ca3af;
+  --border: rgba(255, 255, 255, 0.125);
+  --input: #6b7280;
+  --ring: #f9fafb;
+  --accent: #f9fafb;
+  --accent-hover: #ffffff;
+  --accent-foreground: #0f1521;
+  --accent-soft: rgba(255, 255, 255, 0.08);
+  --link: #f9fafb;
+  --destructive: #e05252;
+  --destructive-text: #ff8a8a;
+  --destructive-soft: rgba(200, 40, 40, 0.22);
+  --success: #2fb37f;
+  --success-text: #5fd3a3;
+  --success-soft: rgba(0, 122, 77, 0.24);
+  --warning: #d9962b;
+  --warning-text: #e8b052;
+  --warning-soft: rgba(217, 150, 43, 0.2);
+  --info-text: #8ab4f8;
+  --info-soft: rgba(42, 103, 191, 0.26);
+  --secondary-text: #d1d5db;
+  --lavender: #2a2750;
+  --purple: #a79bff;
+
+  --shadow-md: 0 1px 4px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 2px 12px rgba(0, 0, 0, 0.6);
 }

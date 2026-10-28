@@ -48,7 +48,7 @@ export async function deleteSourceAction(input: unknown): Promise<ActionResult> 
   const p = idSchema.safeParse(input);
   if (!p.success) return { ok: false, error: firstError(p.error) };
   const supabase = await createClient();
-  const { data, error } = await supabase.from("lead_sources").delete().eq("id", p.data.id).eq("org_id", g.s.org.id).select("id");
+  const { data, error } = await supabase.from("lead_sources").delete().eq("id", p.data.id).eq("org_id", g.s.org.id).eq("is_system", false).select("id");
   if (error?.code === "23503") return { ok: false, error: "Source utilisée par des leads : archivez-la plutôt." };
   if (error || !data?.length) return { ok: false, error: mapDbError(error?.message, "Suppression impossible.") };
   return done();

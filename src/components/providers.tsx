@@ -6,12 +6,12 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-export function Providers({ children }: { children: ReactNode }) {
+export function Providers({ children, nonce }: { children: ReactNode; nonce?: string }) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false } } }),
   );
   return (
-    <ThemeProvider>
+    <ThemeProvider nonce={nonce}>
       <QueryClientProvider client={client}>
         <TooltipProvider delayDuration={200}>
           {children}

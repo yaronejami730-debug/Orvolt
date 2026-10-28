@@ -197,9 +197,10 @@ describe("Meta : secret d'application chiffré + X-Hub-Signature-256", () => {
     // secret indéchiffrable (clé changée) => échec fermé
     const bad = await mkEp(org, "meta", { meta_app_secret_enc: "v1.aaaa.bbbb.cccc" });
     expect((await call(bad.token, body, { "x-hub-signature-256": sig(appSecret, body) })).status).toBe(401);
-    // sans secret d'application : jeton d'URL seul (mode historique, documenté)
+    // sans secret d'application configuré : rejet (le jeton d'URL seul ne suffit plus)
     const open = await mkEp(org, "meta");
-    expect((await call(open.token, body)).status).toBe(200);
+    expect((await call(open.token, body)).status).toBe(401);
+    expect((await call(open.token, body, { "x-hub-signature-256": sig(appSecret, body) })).status).toBe(401);
     // GET verify_token : inchangé, 404 neutre sinon
     const g = (q: string) => GET(new NextRequest(`http://localhost/api/webhooks/inbound/${e.token}?${q}`), { params: Promise.resolve({ token: e.token }) });
     expect((await g(`hub.mode=subscribe&hub.verify_token=${e.secret}&hub.challenge=77`)).status).toBe(200);
@@ -247,7 +248,7 @@ describe("/api/cron/maintenance", () => {
       expect(ok.status).toBe(200);
       expect(ok.headers.get("cache-control")).toBe("no-store");
       const first = await ok.json();
-      expect(Object.keys(first.report).sort()).toEqual(["importFilesRemoved", "importJobsDeleted", "inboundEventsDeleted"]);
+      expect(Object.keys(first.report).sort()).toEqual(["housekeeping", "importFilesRemoved", "importJobsDeleted", "inboundEventsDeleted"]);
       const second = await (await CRON_POST(req(`Bearer ${env.CRON_SECRET}`))).json();
       expect(second.report.importFilesRemoved).toBe(0); // idempotent : rien de plus à purger
     } finally {

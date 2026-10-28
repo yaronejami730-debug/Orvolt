@@ -27,7 +27,7 @@ export async function guard(perms: Permission | Permission[], scope: string): Pr
   const s = await requireSession();
   const list = Array.isArray(perms) ? perms : [perms];
   if (!list.every((p) => sessionCan(s, p))) return { error: DENIED };
-  if (!(await allow(scope, s.user.id, RULES.sensitive))) return { error: RATE_LIMIT_MESSAGE };
+  if (!(await allow(scope, s.user.id, READ_SCOPES.has(scope) ? RULES.read : RULES.sensitive))) return { error: RATE_LIMIT_MESSAGE };
   if (!READ_SCOPES.has(scope) && !(await isWritable(s.org.id))) return { error: READ_ONLY_MESSAGE };
   return { s };
 }
@@ -50,7 +50,7 @@ export function mapDbError(message: string | undefined, fallback = "Opération i
 export async function guardAny(perms: Permission[], scope: string): Promise<{ s: AppSession } | { error: string }> {
   const s = await requireSession();
   if (!perms.some((p) => sessionCan(s, p))) return { error: DENIED };
-  if (!(await allow(scope, s.user.id, RULES.sensitive))) return { error: RATE_LIMIT_MESSAGE };
+  if (!(await allow(scope, s.user.id, READ_SCOPES.has(scope) ? RULES.read : RULES.sensitive))) return { error: RATE_LIMIT_MESSAGE };
   if (!READ_SCOPES.has(scope) && !(await isWritable(s.org.id))) return { error: READ_ONLY_MESSAGE };
   return { s };
 }

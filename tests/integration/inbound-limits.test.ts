@@ -116,7 +116,7 @@ describe("authentification : secret dérivé, Meta chiffré, anciens endpoints",
     for (const key of [e.hash, e.secret]) expect((await call(e.token, body, { "x-leadforge-signature": `t=${ts},v1=${signPayload(key, ts, body)}` })).status).toBe(401);
     expect((await call(e.token, body, { "x-leadforge-secret": e.secret })).status).toBe(200);
   });
-  it("Meta avec secret d'application : X-Hub-Signature-256 obligatoire ; sans secret, jeton seul", async () => {
+  it("Meta : X-Hub-Signature-256 obligatoire ; sans secret d'application configuré, rejet (plus de mode jeton seul)", async () => {
     const e = await mkEp(authOrg, "meta", { meta_app_secret_enc: encryptSecret("meta-app-secret") });
     const body = JSON.stringify({ entry: [{ changes: [{ field: "leadgen", value: { field_data: [{ name: "email", values: [`m-${run}@x.io`] }, { name: "full_name", values: ["Meta Signé"] }] } }] }] });
     expect((await call(e.token, body)).status).toBe(401);
@@ -124,7 +124,7 @@ describe("authentification : secret dérivé, Meta chiffré, anciens endpoints",
     const sig = `sha256=${createHmac("sha256", "meta-app-secret").update(body).digest("hex")}`;
     expect(await (await call(e.token, body, { "x-hub-signature-256": sig })).json()).toMatchObject({ status: "created" });
     const plain = await mkEp(authOrg, "meta");
-    expect((await call(plain.token, body.replace(`m-${run}`, `p-${run}`))).status).toBe(200);
+    expect((await call(plain.token, body.replace(`m-${run}`, `p-${run}`))).status).toBe(401);
     // le secret d'application chiffré n'est lisible ni en clair en base ni par un client
     const { data } = await admin.from("inbound_endpoints").select("meta_app_secret_enc").eq("id", e.id).single();
     expect(data!.meta_app_secret_enc).not.toContain("meta-app-secret");

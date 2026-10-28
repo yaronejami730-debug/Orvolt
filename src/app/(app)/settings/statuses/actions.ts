@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { featureError } from "@/lib/billing/feature-guard";
 import { guard, mapDbError, type ActionResult } from "@/lib/action-guard";
 import { createClient } from "@/lib/supabase/server";
 import { fieldErrors, firstError } from "@/lib/validation/auth";
@@ -26,6 +27,8 @@ const invalid = (e: import("zod").ZodError): ActionResult => ({ ok: false, error
 export async function createStatusAction(input: unknown): Promise<ActionResult> {
   const g = await guard("statuses.manage", "statuses");
   if ("error" in g) return { ok: false, error: g.error };
+  const locked = await featureError(g.s.org.id, "status_tracking");
+  if (locked) return { ok: false, error: locked };
   const p = createStatusSchema.safeParse(input);
   if (!p.success) return invalid(p.error);
   const supabase = await createClient();
@@ -45,6 +48,8 @@ export async function createStatusAction(input: unknown): Promise<ActionResult> 
 export async function updateStatusAction(input: unknown): Promise<ActionResult> {
   const g = await guard("statuses.manage", "statuses");
   if ("error" in g) return { ok: false, error: g.error };
+  const locked = await featureError(g.s.org.id, "status_tracking");
+  if (locked) return { ok: false, error: locked };
   const p = updateStatusSchema.safeParse(input);
   if (!p.success) return invalid(p.error);
   const supabase = await createClient();
@@ -64,6 +69,8 @@ export async function updateStatusAction(input: unknown): Promise<ActionResult> 
 export async function deleteStatusAction(input: unknown): Promise<ActionResult> {
   const g = await guard("statuses.manage", "statuses");
   if ("error" in g) return { ok: false, error: g.error };
+  const locked = await featureError(g.s.org.id, "status_tracking");
+  if (locked) return { ok: false, error: locked };
   const p = deleteStatusSchema.safeParse(input);
   if (!p.success) return invalid(p.error);
   const supabase = await createClient();
@@ -85,6 +92,8 @@ export async function deleteStatusAction(input: unknown): Promise<ActionResult> 
 export async function reorderStatusesAction(input: unknown): Promise<ActionResult> {
   const g = await guard("statuses.manage", "statuses");
   if ("error" in g) return { ok: false, error: g.error };
+  const locked = await featureError(g.s.org.id, "status_tracking");
+  if (locked) return { ok: false, error: locked };
   const p = reorderSchema.safeParse(input);
   if (!p.success) return invalid(p.error);
   const supabase = await createClient();
@@ -96,6 +105,8 @@ export async function reorderStatusesAction(input: unknown): Promise<ActionResul
 export async function setInitialStatusAction(input: unknown): Promise<ActionResult> {
   const g = await guard("statuses.manage", "statuses");
   if ("error" in g) return { ok: false, error: g.error };
+  const locked = await featureError(g.s.org.id, "status_tracking");
+  if (locked) return { ok: false, error: locked };
   const p = setInitialSchema.safeParse(input);
   if (!p.success) return invalid(p.error);
   const supabase = await createClient();
@@ -108,6 +119,8 @@ export async function setInitialStatusAction(input: unknown): Promise<ActionResu
 export async function saveTransitionsAction(input: unknown): Promise<ActionResult> {
   const g = await guard("statuses.manage", "statuses");
   if ("error" in g) return { ok: false, error: g.error };
+  const locked = await featureError(g.s.org.id, "status_tracking");
+  if (locked) return { ok: false, error: locked };
   const p = saveTransitionsSchema.safeParse(input);
   if (!p.success) return invalid(p.error);
   const orgId = g.s.org.id;
@@ -127,6 +140,8 @@ export async function saveTransitionsAction(input: unknown): Promise<ActionResul
 export async function saveActionsAction(input: unknown): Promise<ActionResult> {
   const g = await guard("statuses.manage", "statuses");
   if ("error" in g) return { ok: false, error: g.error };
+  const locked = await featureError(g.s.org.id, "status_tracking");
+  if (locked) return { ok: false, error: locked };
   const p = saveActionsSchema.safeParse(input);
   if (!p.success) return invalid(p.error);
   const orgId = g.s.org.id;
@@ -175,6 +190,8 @@ export async function testWebhookAction(input: unknown): Promise<ActionResult<{ 
 export async function saveStatusGrantsAction(input: unknown): Promise<ActionResult> {
   const g = await guard("statuses.manage", "statuses");
   if ("error" in g) return { ok: false, error: g.error };
+  const locked = await featureError(g.s.org.id, "status_tracking");
+  if (locked) return { ok: false, error: locked };
   const p = saveGrantsSchema.safeParse(input);
   if (!p.success) return invalid(p.error);
   const supabase = await createClient();

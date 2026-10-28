@@ -163,7 +163,10 @@ function FieldDialog({ field, roles, onClose, onSaved }: { field: FieldRow | nul
   const toggle = (list: string[], set: (l: string[]) => void, id: string, on: boolean) => set(on ? [...list, id] : list.filter((x) => x !== id));
   const norm = (l: string[]) => (allIds.every((id) => l.includes(id)) ? null : l);
 
+  const clearFe = (...keys: string[]) => setFe((cur) => (keys.some((k) => k in cur) ? Object.fromEntries(Object.entries(cur).filter(([k]) => !keys.includes(k))) : cur));
+
   function save() {
+    setFe({});
     start(async () => {
       const res = await saveFieldAction({
         id: field?.id, label, type, required,
@@ -188,7 +191,7 @@ function FieldDialog({ field, roles, onClose, onSaved }: { field: FieldRow | nul
         <div className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="f-label">Nom</Label>
-            <Input id="f-label" value={label} onChange={(e) => setLabel(e.target.value)} aria-invalid={fe.label ? true : undefined} />
+            <Input id="f-label" value={label} onChange={(e) => { setLabel(e.target.value); clearFe("label"); }} aria-invalid={fe.label ? true : undefined} />
             <FieldError id="f-label-error" message={fe.label} />
           </div>
           <fieldset className="space-y-2">
@@ -197,7 +200,7 @@ function FieldDialog({ field, roles, onClose, onSaved }: { field: FieldRow | nul
               {(Object.keys(FIELD_TYPE_META) as FieldType[]).map((t) => {
                 const Icon = FIELD_TYPE_META[t].icon;
                 return (
-                  <button key={t} type="button" role="radio" aria-checked={type === t} disabled={!!field && field.type !== t} onClick={() => setType(t)}
+                  <button key={t} type="button" role="radio" aria-checked={type === t} disabled={!!field && field.type !== t} onClick={() => { setType(t); clearFe("choices", "min", "max"); }}
                     className={cn("flex items-center gap-2 rounded-lg border p-3 text-sm transition-colors hover:border-muted-foreground/60 disabled:opacity-40", type === t && "border-accent bg-accent-soft")}>
                     <Icon className="size-4" aria-hidden /> {FIELD_TYPE_META[t].label}
                   </button>
@@ -208,8 +211,8 @@ function FieldDialog({ field, roles, onClose, onSaved }: { field: FieldRow | nul
           </fieldset>
           {type === "number" && (
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label htmlFor="f-min">Minimum (0 par défaut)</Label><Input id="f-min" type="number" step="any" value={min} onChange={(e) => setMin(e.target.value)} aria-invalid={fe.min ? true : undefined} /><FieldError id="f-min-error" message={fe.min} /></div>
-              <div className="space-y-2"><Label htmlFor="f-max">Maximum</Label><Input id="f-max" type="number" step="any" value={max} onChange={(e) => setMax(e.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="f-min">Minimum (0 par défaut)</Label><Input id="f-min" type="number" step="any" value={min} onChange={(e) => { setMin(e.target.value); clearFe("min", "max"); }} aria-invalid={fe.min ? true : undefined} /><FieldError id="f-min-error" message={fe.min} /></div>
+              <div className="space-y-2"><Label htmlFor="f-max">Maximum</Label><Input id="f-max" type="number" step="any" value={max} onChange={(e) => { setMax(e.target.value); clearFe("min", "max"); }} /></div>
             </div>
           )}
           {type === "select" && (
@@ -217,13 +220,13 @@ function FieldDialog({ field, roles, onClose, onSaved }: { field: FieldRow | nul
               <Label>Options</Label>
               {choices.map((c, i) => (
                 <div key={i} className="flex gap-2">
-                  <Input aria-label={`Option ${i + 1}`} value={c} onChange={(e) => setChoices(choices.map((x, j) => (j === i ? e.target.value : x)))} />
+                  <Input aria-label={`Option ${i + 1}`} value={c} onChange={(e) => { setChoices(choices.map((x, j) => (j === i ? e.target.value : x))); clearFe("choices"); }} />
                   <Button size="icon" variant="ghost" aria-label={`Retirer l'option ${i + 1}`} disabled={choices.length <= 2} onClick={() => setChoices(choices.filter((_, j) => j !== i))}><X className="size-4" /></Button>
                 </div>
               ))}
               <FieldError id="f-choices-error" message={fe.choices} />
               <div className="flex flex-wrap items-center gap-4">
-                <Button size="sm" variant="outline" onClick={() => setChoices([...choices, ""])}><Plus className="size-3.5" /> Ajouter une option</Button>
+                <Button size="sm" variant="outline" onClick={() => { setChoices([...choices, ""]); clearFe("choices"); }}><Plus className="size-3.5" /> Ajouter une option</Button>
                 <label className="flex items-center gap-2 text-sm"><Switch checked={multiple} onCheckedChange={setMultiple} /> Choix multiple</label>
               </div>
             </div>

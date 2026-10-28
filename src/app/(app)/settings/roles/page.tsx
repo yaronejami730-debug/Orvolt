@@ -4,6 +4,8 @@ import { DeleteRoleButton, RoleEditor, type RoleView } from "@/components/settin
 import { Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { FeatureLocked } from "@/components/billing/feature-locked";
+import { hasFeature } from "@/lib/billing/feature-guard";
 import { parsePermissions, resolvePermissions } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { requireSession, sessionCan } from "@/lib/session";
@@ -13,10 +15,11 @@ export const metadata: Metadata = { title: "Rôles" };
 export default async function RolesPage() {
   const s = await requireSession();
   if (!sessionCan(s, "roles.manage")) return <AccessDenied />;
+  if (!(await hasFeature(s.org.id, "custom_roles"))) return <FeatureLocked feature="custom_roles" canUpgrade={sessionCan(s, "billing.manage") && !s.org.parent_org_id} />;
   const supabase = await createClient();
   const { data } = await supabase
     .from("roles")
-    .select("id, name, description, is_system, is_admin, system_key, permissions")
+    .select("id, name, description, is_system, is_admin, is_field, system_key, permissions")
     .eq("org_id", s.org.id)
     .order("created_at");
   const roles: RoleView[] = (data ?? []).map((r) => ({

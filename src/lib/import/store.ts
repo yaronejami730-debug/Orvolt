@@ -16,6 +16,10 @@ export function supabaseImportStore(admin: SupabaseClient, orgId: string, userId
       const { data } = await admin.from("lead_sources").select("id, name").eq("org_id", orgId).eq("archived", false);
       return new Map((data ?? []).map((s) => [s.name.toLowerCase(), s.id]));
     },
+    async domainsByName() {
+      const { data } = await admin.from("call_domains").select("id, name").eq("org_id", orgId).eq("active", true);
+      return new Map((data ?? []).map((d) => [d.name.toLowerCase(), d.id]));
+    },
     async validSourceId(id) {
       const { data } = await admin.from("lead_sources").select("id").eq("org_id", orgId).eq("id", id).eq("archived", false).maybeSingle();
       return !!data;

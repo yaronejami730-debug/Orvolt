@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
+import { signupViaForm } from "./helpers";
 import { expect, test, type Page } from "@playwright/test";
 
 config({ path: ".env.local", quiet: true });
@@ -46,14 +47,8 @@ test.afterAll(async () => {
 });
 
 test("import CSV (simulation, rapport d'erreurs, doublons) puis webhook entrant", async ({ page, request }) => {
-  await page.goto("/signup");
-  await page.getByLabel("Votre nom").fill(owner.name);
-  await page.getByLabel("Nom de l'entreprise").fill(owner.org);
-  await page.getByLabel("E-mail").fill(owner.email);
-  await page.getByLabel("Mot de passe").fill(owner.password);
-  await page.getByTestId("template-energie").click();
-  await page.getByRole("button", { name: "Créer mon espace" }).click();
-  await expect(page).toHaveURL(/\/onboarding/);
+  await signupViaForm(page, { first: "Test", last: owner.name, email: owner.email, password: owner.password, org: owner.org, phone: "0612345678", siret: "73282932000074" });
+  await expect(page).toHaveURL(/\/onboarding$/);
 
   // --- Import : simulation sans écriture
   await startImport(page, "Ignorer");
@@ -164,14 +159,8 @@ test("import CSV (simulation, rapport d'erreurs, doublons) puis webhook entrant"
 
 test("import : champs obligatoires du template absents du CSV -> valeurs par défaut", async ({ page }) => {
   const e = { email: `energie-${run}@e2e.test`, org: `Import E ${run}` };
-  await page.goto("/signup");
-  await page.getByLabel("Votre nom").fill("Eva Énergie");
-  await page.getByLabel("Nom de l'entreprise").fill(e.org);
-  await page.getByLabel("E-mail").fill(e.email);
-  await page.getByLabel("Mot de passe").fill("Passw0rd!e2e");
-  await page.getByTestId("template-energie").click();
-  await page.getByRole("button", { name: "Créer mon espace" }).click();
-  await expect(page).toHaveURL(/\/onboarding/);
+  await signupViaForm(page, { first: "Test", last: "Eva Énergie", email: e.email, password: "Passw0rd!e2e", org: e.org, phone: "0612345678", siret: "73282932000074" });
+  await expect(page).toHaveURL(/\/onboarding$/);
   await page.goto("/import");
   await page.getByLabel("Fichier CSV").setInputFiles({ name: "simple.csv", mimeType: "text/csv", buffer: Buffer.from("Prénom;Nom;E-mail\nAnne;Un;anne@example.com\nBob;Deux;bob@example.com\n") });
   const panel = page.getByTestId("required-defaults");

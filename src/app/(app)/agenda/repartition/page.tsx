@@ -74,6 +74,7 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
         truncations={truncationWarnings(ctx.truncated)}
         toCheck={toCheck}
         fixedCount={ctx.fixedPending + ctx.flagged.length}
+        unavailCount={ctx.flaggedUnavail}
       />
       <DispatchedPlanning rows={dispatched} reps={reps} />
       <UnavailabilityCard rows={unavail} reps={reps} />

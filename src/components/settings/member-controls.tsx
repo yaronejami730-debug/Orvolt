@@ -10,11 +10,15 @@ export function MemberRoleSelect({
   membershipId,
   roleId,
   roles,
+  lockedRoleIds = [],
+  lockPlan = "Pro",
   disabled,
 }: {
   membershipId: string;
   roleId: string;
   roles: { id: string; name: string }[];
+  lockedRoleIds?: string[];
+  lockPlan?: string;
   disabled?: boolean;
 }) {
   const [pending, start] = useTransition();
@@ -33,7 +37,8 @@ export function MemberRoleSelect({
       }
     >
       {roles.map((r) => (
-        <option key={r.id} value={r.id}>{r.name}</option>
+        // Le rôle actuel reste sélectionnable (membre existant après un downgrade) ; seules les nouvelles attributions sont grisées.
+        <option key={r.id} value={r.id} disabled={lockedRoleIds.includes(r.id) && r.id !== roleId}>{r.name}{lockedRoleIds.includes(r.id) && r.id !== roleId ? ` (${lockPlan})` : ""}</option>
       ))}
     </Select>
   );

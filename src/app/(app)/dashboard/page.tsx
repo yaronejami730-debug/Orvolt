@@ -7,6 +7,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getEntitlement } from "@/lib/billing/access";
+import { hasFeature } from "@/lib/billing/feature-guard";
+import { FeatureLocked } from "@/components/billing/feature-locked";
 import { requireSession, sessionCan } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -16,8 +18,9 @@ export default async function DashboardPage() {
   // Organisation en lecture seule : redirection douce de l'accueil vers la facturation (les autres écrans restent consultables).
   if (sessionCan(s, "billing.manage") && !(await getEntitlement(s.org.id)).writable) redirect("/settings/billing");
   const greeting = `Bienvenue ${s.profile.full_name ?? ""} — ${s.org.name}`;
-  if (!sessionCan(s, "dashboard.view")) {
-    // Pas de statistiques pour ce rôle : accès rapide aux écrans de travail.
+  const analytics = await hasFeature(s.org.id, "analytics");
+  if (!sessionCan(s, "dashboard.view") || !analytics) {
+    // Pas de statistiques pour ce rôle ou ce plan : accès rapide aux écrans de travail.
     const links = [
       { href: "/leads", label: "Mes leads", icon: Users },
       ...(sessionCan(s, "appointments.manage_own") || sessionCan(s, "appointments.manage_all") ? [{ href: "/agenda", label: "Mon agenda", icon: CalendarDays }] : []),
@@ -31,6 +34,7 @@ export default async function DashboardPage() {
             <Link key={href} href={href}><Card className="flex items-center gap-3 p-5 transition-colors hover:border-muted-foreground/40"><Icon className="size-5 text-link" aria-hidden /><span className="font-medium">{label}</span></Card></Link>
           ))}
         </div>
+        {sessionCan(s, "dashboard.view") && <FeatureLocked feature="analytics" canUpgrade={sessionCan(s, "billing.manage") && !s.org.parent_org_id} />}
       </div>
     );
   }

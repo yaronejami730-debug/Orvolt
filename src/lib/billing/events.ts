@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import { PLAN_LIST, planSeats, type PlanId } from "./plans";
+import { EXTRA_SEAT_LOOKUP_PREFIX, PLAN_LIST, planSeats, type PlanId } from "./plans";
 
 export type OrgStatus = "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";
 
@@ -13,12 +13,17 @@ export interface OrgPatch {
   trial_ends_at?: string | null;
   cancel_at_period_end?: boolean;
   past_due_since?: string | null;
+  /** Début de l'ancienneté continue Premium (palier de prix) ; null = hors Premium ou abonnement résilié. */
+  premium_since?: string | null;
+  extra_seats?: number;
 }
 export interface OrgState {
   subscription_status: string;
   past_due_since: string | null;
   stripe_subscription_id: string | null;
   stripe_customer_id: string | null;
+  plan?: string | null;
+  premium_since?: string | null;
 }
 export interface Mapped {
   orgId?: string;
@@ -56,7 +61,8 @@ export function mapStatus(s: string): OrgStatus {
 /** Identifie le plan d'un prix : lookup_key, sinon identifiant de prix configuré, sinon metadata.plan. */
 export function planOfPrice(price: Stripe.Price | undefined, priceIds: Partial<Record<PlanId, string | undefined>> = {}): PlanId | null {
   if (!price) return null;
-  const byKey = PLAN_LIST.find((p) => p.lookupKey === price.lookup_key || p.lookupKeyYearly === price.lookup_key);
+  // Les prix par palier du Premium portent la clé du plan suivie de « _tN ».
+  const byKey = PLAN_LIST.find((p) => [p.lookupKey, p.lookupKeyYearly].some((k) => price.lookup_key === k || price.lookup_key?.startsWith(`${k}_t`)));
   if (byKey) return byKey.id;
   const byId = PLAN_LIST.find((p) => priceIds[p.id] && priceIds[p.id] === price.id);
   if (byId) return byId.id;
@@ -64,11 +70,33 @@ export function planOfPrice(price: Stripe.Price | undefined, priceIds: Partial<R
   return PLAN_LIST.find((p) => p.id === meta)?.id ?? null;
 }
 
+const isExtraSeat = (price: Stripe.Price | undefined) => !!price?.lookup_key?.startsWith(EXTRA_SEAT_LOOKUP_PREFIX);
+
+/** Ligne du plan (hors utilisateurs supplémentaires) et nombre d'utilisateurs en plus de l'abonnement. */
+function splitItems(sub: Stripe.Subscription, priceIds: Partial<Record<PlanId, string | undefined>>): { plan: PlanId | null; extra: number } {
+  const items = sub.items?.data ?? [];
+  let plan: PlanId | null = null;
+  for (const it of items) if (!isExtraSeat(it.price)) { plan = planOfPrice(it.price, priceIds); if (plan) break; }
+  const extra = items.filter((it) => isExtraSeat(it.price)).reduce((n, it) => n + (it.quantity ?? 0), 0);
+  return { plan, extra: plan && planSeats(plan) !== null ? extra : 0 };
+}
+
 const periodEnd = (sub: Stripe.Subscription): string | null => {
   const legacy = (sub as unknown as { current_period_end?: number }).current_period_end;
   const item = sub.items?.data?.[0] as unknown as { current_period_end?: number } | undefined;
   return iso(legacy ?? item?.current_period_end);
 };
+
+/**
+ * Ancienneté continue Premium. Démarre à la première facture (fin d'essai, sinon date de l'événement) ;
+ * conservée tant que le même abonnement reste Premium ; remise à zéro dès qu'il est résilié, remplacé ou change de plan.
+ */
+function premiumSince(plan: PlanId, status: OrgStatus, cur: OrgState, sub: Stripe.Subscription, at: string): Pick<OrgPatch, "premium_since"> {
+  if (plan !== "premium" || status === "canceled" || status === "unpaid") return { premium_since: null };
+  if (status === "incomplete") return {};
+  const sameTenure = cur.plan === "premium" && cur.premium_since && cur.stripe_subscription_id === sub.id;
+  return sameTenure ? {} : { premium_since: iso(sub.trial_end) ?? at };
+}
 
 /** Traduit un événement Stripe vérifié en modification d'organisation. null = événement non géré. */
 export function mapStripeEvent(event: Stripe.Event, priceIds: Partial<Record<PlanId, string | undefined>> = {}): Mapped | null {
@@ -86,17 +114,18 @@ export function mapStripeEvent(event: Stripe.Event, priceIds: Partial<Record<Pla
     case "customer.subscription.created":
     case "customer.subscription.updated": {
       const sub = event.data.object as Stripe.Subscription;
-      const plan = planOfPrice(sub.items?.data?.[0]?.price, priceIds);
+      const { plan, extra } = splitItems(sub, priceIds);
       if (!plan) return null; // prix inconnu : on ne touche à rien
       const status = mapStatus(sub.status);
       return {
         kind: "subscription", concerns: "subscription", orgId: orgIdOf(sub.metadata?.org_id), customerId: idOf(sub.customer), subscriptionId: sub.id,
         patch: (cur) => ({
           plan, subscription_status: status, stripe_subscription_id: sub.id, ...(idOf(sub.customer) ? { stripe_customer_id: idOf(sub.customer)! } : {}),
-          ...(status === "trialing" || status === "active" || status === "past_due" ? { seat_limit: planSeats(plan) } : {}),
+          ...(status === "trialing" || status === "active" || status === "past_due" ? { seat_limit: planSeats(plan) === null ? null : planSeats(plan)! + extra, extra_seats: extra } : {}),
           current_period_end: periodEnd(sub), cancel_at_period_end: !!sub.cancel_at_period_end,
           ...(sub.trial_end ? { trial_ends_at: iso(sub.trial_end) } : {}),
           past_due_since: status === "past_due" ? (cur.past_due_since ?? at) : null,
+          ...premiumSince(plan, status, cur, sub, at),
         }),
       };
     }
@@ -104,7 +133,8 @@ export function mapStripeEvent(event: Stripe.Event, priceIds: Partial<Record<Pla
       const sub = event.data.object as Stripe.Subscription;
       return {
         kind: "deleted", concerns: "subscription", orgId: orgIdOf(sub.metadata?.org_id), customerId: idOf(sub.customer), subscriptionId: sub.id,
-        patch: () => ({ subscription_status: "canceled", cancel_at_period_end: false, past_due_since: null, current_period_end: iso(sub.ended_at ?? sub.canceled_at) }),
+        // Résiliation : l'ancienneté Premium est perdue, une reprise repart du prix de départ.
+        patch: () => ({ subscription_status: "canceled", cancel_at_period_end: false, past_due_since: null, current_period_end: iso(sub.ended_at ?? sub.canceled_at), premium_since: null }),
       };
     }
     case "invoice.paid": {

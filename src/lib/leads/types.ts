@@ -19,15 +19,19 @@ export interface LeadRow {
   updated_at: string;
   position: number;
   created_by: string | null;
+  /** Domaine d'activité du lead (pompe à chaleur, photovoltaïque…) : oriente le formulaire d'appel proposé. */
+  call_domain_id?: string | null;
 }
 export const LEAD_COLS =
-  "id, status_id, source_id, assigned_to, first_name, last_name, company, email, phone, address, city, postal_code, value, custom, created_at, updated_at, position, created_by";
+  "id, status_id, source_id, assigned_to, first_name, last_name, company, email, phone, address, city, postal_code, value, custom, created_at, updated_at, position, created_by, call_domain_id";
 
 export interface MetaStatus { id: string; name: string; color: string; kind: "normal" | "won" | "lost"; position: number; is_initial: boolean }
 export interface LeadsMeta {
   statuses: MetaStatus[];
   sources: { id: string; name: string; archived: boolean }[];
   members: { id: string; name: string }[];
+  /** Domaines d'activité actifs (liste de saisie du lead) ; vide si l'organisation n'en a pas. */
+  callDomains: { id: string; name: string }[];
   fields: CustomFieldDef[];
   transitions: { from: string; to: string; role_id: string | null }[];
   /** Statuts que le rôle de l'utilisateur peut poser / utiliser à la création (programmés par le super administrateur). */

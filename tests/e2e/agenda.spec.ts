@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
-import { fillEnergyRequired } from "./helpers";
+import { fillEnergyRequired, signupViaForm } from "./helpers";
 import { expect, test, type Page } from "@playwright/test";
 
 config({ path: ".env.local", quiet: true });
@@ -48,14 +48,8 @@ test.afterAll(async () => {
 
 test("zone, rendez-vous dans le rayon, hors rayon forcé, conflit, agenda du commercial", async ({ page }) => {
   // Inscription + commercial
-  await page.goto("/signup");
-  await page.getByLabel("Votre nom").fill(owner.name);
-  await page.getByLabel("Nom de l'entreprise").fill(owner.org);
-  await page.getByLabel("E-mail").fill(owner.email);
-  await page.getByLabel("Mot de passe").fill(owner.password);
-  await page.getByTestId("template-energie").click();
-  await page.getByRole("button", { name: "Créer mon espace" }).click();
-  await expect(page).toHaveURL(/\/onboarding/);
+  await signupViaForm(page, { first: "Test", last: owner.name, email: owner.email, password: owner.password, org: owner.org, phone: "0612345678", siret: "73282932000074" });
+  await expect(page).toHaveURL(/\/onboarding$/);
   await page.goto("/settings/members");
   await page.getByRole("button", { name: "Ajouter un membre" }).click();
   await page.getByLabel("Nom complet").fill(rep.name);

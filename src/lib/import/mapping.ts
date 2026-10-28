@@ -13,6 +13,7 @@ export const NATIVE_TARGETS = [
   { key: "postal_code", label: "Code postal" },
   { key: "value", label: "Valeur (€)" },
   { key: "source", label: "Source (nom)" },
+  { key: "domain", label: "Domaine (nom)" },
 ] as const;
 export type NativeKey = (typeof NATIVE_TARGETS)[number]["key"];
 
@@ -31,6 +32,7 @@ const SYNONYMS: Record<NativeKey, string[]> = {
   postal_code: ["code postal", "cp", "zip", "postal code", "zipcode"],
   value: ["valeur", "montant", "budget", "value", "amount"],
   source: ["source", "origine", "provenance", "canal"],
+  domain: ["domaine", "produit", "interet", "interesse par", "projet"],
 };
 
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -54,7 +56,7 @@ export function autoMap(headers: string[], fields: Pick<CustomFieldDef, "key" | 
   return out;
 }
 
-export const mappingSchema = z.record(z.string().max(100), z.string().regex(/^(ignore|first_name|last_name|company|email|phone|address|city|postal_code|value|source|custom:[a-z][a-z0-9_]{1,40})$/));
+export const mappingSchema = z.record(z.string().max(100), z.string().regex(/^(ignore|first_name|last_name|company|email|phone|address|city|postal_code|value|source|domain|custom:[a-z][a-z0-9_]{1,40})$/));
 
 export interface RowIssue {
   line: number; // numéro de ligne dans le fichier (en-tête = 1)
@@ -72,6 +74,8 @@ export interface ParsedLead {
   postal_code: string | null;
   value: number | null;
   source_name: string | null;
+  /** Domaine d'activité (pompe à chaleur…) : résolu par nom, voir engine.ts. */
+  domain_name?: string | null;
   custom: Record<string, CustomValue>;
 }
 
@@ -143,6 +147,9 @@ export function validateRow(
       }
       case "source":
         lead.source_name = raw.slice(0, 40);
+        break;
+      case "domain":
+        lead.domain_name = raw.slice(0, 60);
         break;
     }
   });

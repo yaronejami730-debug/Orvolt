@@ -2,6 +2,9 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTemplate } from "@/lib/templates";
 
+/** Domaines d'appel créés avec le modèle énergie. */
+export const DEFAULT_ENERGY_DOMAINS = [{ name: "Pompe à chaleur", color: "#f97316" }, { name: "Photovoltaïque", color: "#eab308" }];
+
 export type ApplyResult = { ok: true } | { ok: false; error: string };
 
 /**
@@ -50,5 +53,10 @@ export async function applyTemplate(orgId: string, templateId: string): Promise<
     return { ok: false, error: error.message.includes("org_has_leads") ? "L'organisation contient déjà des leads." : "Application du template impossible." };
   }
   await admin.from("organizations").update({ template: tpl.id }).eq("id", orgId);
+  // Modèle « énergie » : domaines d'appel par défaut (modifiables / supprimables ensuite). Seulement si l'organisation n'en a aucun.
+  if (tpl.id === "energie") {
+    const { count } = await admin.from("call_domains").select("id", { count: "exact", head: true }).eq("org_id", orgId);
+    if (!count) await admin.from("call_domains").insert(DEFAULT_ENERGY_DOMAINS.map((d, position) => ({ org_id: orgId, name: d.name, color: d.color, position })));
+  }
   return { ok: true };
 }

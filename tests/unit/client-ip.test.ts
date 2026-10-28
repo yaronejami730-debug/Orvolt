@@ -18,3 +18,21 @@ describe("clientIp", () => {
     expect(await clientIp()).toBe("203.0.113.9");
   });
 });
+
+describe("ipOrDeny / Vercel", () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); });
+  it("sur Vercel, lit x-vercel-forwarded-for (non forgeable)", async () => {
+    vi.stubEnv("VERCEL", "1");
+    hdrs = { "x-vercel-forwarded-for": "198.51.100.7", "x-forwarded-for": "6.6.6.6" };
+    const { clientIp } = await import("@/lib/rate-limit-server");
+    expect(await clientIp()).toBe("198.51.100.7");
+  });
+  it("IP inconnue : « local » hors production, refus (null) en production", async () => {
+    const { ipOrDeny } = await import("@/lib/rate-limit-server");
+    expect(await ipOrDeny()).toBe("local");
+    vi.stubEnv("NODE_ENV", "production");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(await ipOrDeny()).toBeNull();
+    expect(warn).toHaveBeenCalled();
+  });
+});

@@ -4,6 +4,8 @@ import { ApplyTemplateButton } from "@/components/settings/apply-template";
 import { StatusGrantsMatrix, type GrantRow } from "@/components/settings/status-grants-matrix";
 import { StatusesManager } from "@/components/settings/statuses-manager";
 import type { ActionRow, StatusRow, TransitionRow } from "@/components/settings/workflow-types";
+import { FeatureLocked } from "@/components/billing/feature-locked";
+import { hasFeature } from "@/lib/billing/feature-guard";
 import { createClient } from "@/lib/supabase/server";
 import { requireSession, sessionCan } from "@/lib/session";
 
@@ -12,6 +14,7 @@ export const metadata: Metadata = { title: "Statuts" };
 export default async function StatusesPage() {
   const s = await requireSession();
   if (!sessionCan(s, "statuses.manage")) return <AccessDenied />;
+  if (!(await hasFeature(s.org.id, "status_tracking"))) return <FeatureLocked feature="status_tracking" canUpgrade={sessionCan(s, "billing.manage") && !s.org.parent_org_id} />;
   const supabase = await createClient();
   const org = s.org.id;
   const [st, tr, ac, ro, me, gr] = await Promise.all([

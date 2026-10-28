@@ -1,12 +1,29 @@
-import Link from "next/link";
 import { Flame, Home, MapPin, Sun, TriangleAlert } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Spotlight } from "./spotlight";
+import { TrialCta } from "./trial-cta";
+import { TRIAL_DAYS } from "@/lib/billing/plans";
+
+/** Bandeau d'appel à l'essai entre deux sections : une accroche liée à ce qui vient d'être vu, puis le bouton. */
+export function CtaBand({ signedIn, title, text = `Testez avec votre équipe pendant ${TRIAL_DAYS} jours. Aucun engagement.` }: { signedIn: boolean; title: string; text?: string }) {
+  return (
+    <section aria-label={title} className="pb-20 sm:pb-28">
+      <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
+        <div className="flex flex-col items-start gap-6 rounded-2xl border bg-card p-6 sm:p-8 md:flex-row md:items-center md:justify-between md:gap-10">
+          <div className="max-w-xl">
+            <p className="text-balance text-xl font-semibold tracking-[-0.03em] sm:text-2xl">{title}</p>
+            <p className="mt-2 text-muted-foreground">{text}</p>
+          </div>
+          <TrialCta signedIn={signedIn} hint="below" className="w-full items-stretch md:w-auto md:shrink-0" buttonClassName="w-full md:w-auto" />
+        </div>
+      </div>
+    </section>
+  );
+}
 
 /** Phrase géante en deux tons : faits du produit uniquement, aucun chiffre client inventé. */
 export function Statement() {
   return (
-    <section aria-label="Pourquoi LeadForge" className="py-20 sm:py-28">
+    <section aria-label="Pourquoi Orvolt" className="py-20 sm:py-28">
       <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
         <p className="max-w-4xl text-balance text-3xl font-semibold leading-[1.12] tracking-[-0.04em] sm:text-5xl">
           Pompe à chaleur, solaire, isolation : un seul pipeline.{" "}
@@ -169,17 +186,13 @@ export function HowItWorks() {
 
 export function FinalCta({ signedIn }: { signedIn: boolean }) {
   return (
-    <section aria-labelledby="cta-title" className="relative isolate overflow-hidden border-t py-24 sm:py-32">
+    <section id="essai" aria-labelledby="cta-title" className="relative isolate overflow-hidden border-t py-24 sm:py-32">
       <div className="mk-fluid -z-10 [transform:scaleY(-1)]" aria-hidden><i /><i /><i /></div>
       <div className="mx-auto w-full max-w-3xl px-5 text-center sm:px-8">
         <h2 id="cta-title" className="text-balance text-4xl font-bold tracking-[-0.05em] sm:text-6xl">Vos leads méritent mieux qu&apos;un tableur.</h2>
-        <p className="mx-auto mt-5 max-w-lg text-muted-foreground sm:text-lg">Créez votre espace, importez vos contacts et invitez l&apos;équipe. L&apos;essai dure 14 jours.</p>
+        <p className="mx-auto mt-5 max-w-lg text-muted-foreground sm:text-lg">Créez votre espace, importez vos contacts et invitez l&apos;équipe. Vous gardez {TRIAL_DAYS} jours pour décider, et vous annulez en un clic.</p>
         <div className="mt-9 flex justify-center">
-          {signedIn ? (
-            <Button asChild size="lg"><Link href="/dashboard">Ouvrir l&apos;app</Link></Button>
-          ) : (
-            <Button asChild size="lg"><Link href="/signup">Essai gratuit 14 jours</Link></Button>
-          )}
+          <TrialCta signedIn={signedIn} hint="below" />
         </div>
       </div>
     </section>

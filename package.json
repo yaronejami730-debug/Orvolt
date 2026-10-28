@@ -13,6 +13,7 @@
     "db:reset": "node scripts/db-reset.mjs",
     "db:seed": "node scripts/db-seed.mjs",
     "test": "vitest run",
+    "legal:check": "REQUIRE_LEGAL=1 vitest run tests/unit/legal.test.ts",
     "test:e2e": "playwright test",
     "stripe:setup": "node scripts/stripe-setup.mjs",
     "stripe:mock": "node scripts/stripe-mock.mjs up",
@@ -21,6 +22,9 @@
     "routing:up": "node scripts/routing.mjs up",
     "routing:down": "node scripts/routing.mjs down",
     "routing:status": "node scripts/routing.mjs status"
+  },
+  "overrides": {
+    "next": { "postcss": "^8.5.23" }
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

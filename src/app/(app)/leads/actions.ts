@@ -4,18 +4,21 @@ import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { dashboardCache } from "@/lib/dashboard/cache";
+import { mailLeadsAssigned } from "@/lib/notifications/lead-mail";
 import { guard, mapDbError, type ActionResult } from "@/lib/action-guard";
 import { runStatusActions } from "@/lib/automation/store";
 import { matchesSignature } from "@/lib/validation/file-signature";
 import { validateCustom } from "@/lib/custom-fields";
 import { shiftDay, startOfParisDay } from "@/lib/dashboard/period";
-import { LEAD_COLS, type LeadRow } from "@/lib/leads/types";
+import { LEAD_COLS, leadName, type LeadRow } from "@/lib/leads/types";
+import { normalizeEmail, normalizePhone } from "@/lib/leads/normalize";
+import { keysetFilter, LEADS_COUNT_CAP, phoneSearchTerm, quoteValue, supportsKeyset } from "@/lib/leads/keyset";
 import { loadFieldDefs } from "@/lib/leads/meta";
 import { createClient } from "@/lib/supabase/server";
 import { fieldErrors, firstError } from "@/lib/validation/auth";
 import {
   bulkAssignSchema, bulkMoveSchema, bulkSchema, callSchema, createLeadSchema, idOnly, listParamsSchema, moveLeadSchema,
-  noteSchema, noteUpdateSchema, safeFileName, updateLeadSchema, validateUpload, type ListParams,
+  MAX_FILES_PER_LEAD, noteSchema, noteUpdateSchema, safeFileName, updateLeadSchema, validateUpload, type ListParams,
 } from "@/lib/validation/leads";
 import { z } from "zod";
 
@@ -25,7 +28,8 @@ const esc = (s: string) => s.toLowerCase().replace(/[%_\\,()*]/g, " ").trim();
 
 function listQuery(supabase: SB, orgId: string) {
   // Lecture via la vue leads_api : les champs personnalisés masqués pour le rôle sont retirés en base.
-  return supabase.from("leads_api").select(LEAD_COLS, { count: "exact" }).eq("org_id", orgId).is("archived_at", null);
+  // Pas de count: "exact" (COUNT(*) sur toute l'organisation) : le total vient de leads_count, plafonné.
+  return supabase.from("leads_api").select(LEAD_COLS).eq("org_id", orgId).is("archived_at", null);
 }
 function applyFilters(q: ReturnType<typeof listQuery>, p: ListParams) {
   if (p.statuses.length) q = q.in("status_id", p.statuses);
@@ -45,24 +49,60 @@ function applyFilters(q: ReturnType<typeof listQuery>, p: ListParams) {
   const hi = p.to ? day(shiftDay(p.to, 1)) : null;
   if (lo) q = q.gte("created_at", lo);
   if (hi) q = q.lt("created_at", hi);
-  if (p.q && esc(p.q)) q = q.ilike("search_text", `%${esc(p.q)}%`);
+  if (p.q && esc(p.q)) {
+    // Sous-chaîne (index trigram) + numéro de téléphone saisi sous n'importe quel format (index trigram sur phone_norm).
+    const ph = phoneSearchTerm(p.q);
+    q = ph ? q.or(`search_text.ilike.${quoteValue(`%${esc(p.q)}%`)},phone_norm.ilike.${quoteValue(`%${ph}%`)}`) : q.ilike("search_text", `%${esc(p.q)}%`);
+  }
   for (const [k, v] of Object.entries(p.custom)) if (esc(v)) q = q.ilike(`custom->>${k}`, `%${esc(v)}%`);
   return q;
 }
 
-export async function listLeadsAction(input: unknown): Promise<ActionResult<{ rows: LeadRow[]; total: number }>> {
+/** Total plafonné (leads_count) : au plus LEADS_COUNT_CAP lignes lues, jamais de COUNT(*) sur toute l'organisation. */
+async function countLeads(supabase: SB, orgId: string, p: ListParams): Promise<number> {
+  const ids = (a: string[]) => a.filter((x) => x !== "none");
+  const day = (d: string) => { try { return startOfParisDay(d).toISOString(); } catch { return null; } };
+  const custom = Object.fromEntries(Object.entries(p.custom).filter(([, v]) => esc(v)).map(([k, v]) => [k, esc(v)]));
+  const { data, error } = await supabase.rpc("leads_count", {
+    p_org: orgId,
+    p_statuses: p.statuses,
+    p_sources: ids(p.sources), p_sources_none: p.sources.includes("none"),
+    p_assigned: ids(p.assigned), p_assigned_none: p.assigned.includes("none"),
+    p_from: p.from ? day(p.from) : null, p_to: p.to ? day(shiftDay(p.to, 1)) : null,
+    p_q: p.q && esc(p.q) ? esc(p.q) : null, p_phone: phoneSearchTerm(p.q),
+    p_custom: Object.keys(custom).length ? custom : null,
+    p_cap: LEADS_COUNT_CAP,
+  });
+  if (error) throw new Error("count");
+  return Number(data ?? 0);
+}
+
+export async function listLeadsAction(input: unknown): Promise<ActionResult<{ rows: LeadRow[]; total: number; capped: boolean; hasMore: boolean }>> {
   const g = await guard([], "leads-list");
   if ("error" in g) return { ok: false, error: g.error };
   const p = listParamsSchema.safeParse(input ?? {});
   if (!p.success) return invalid(p.error);
   const supabase = await createClient();
-  const from = (p.data.page - 1) * p.data.pageSize;
-  const { data, count, error } = await applyFilters(listQuery(supabase, g.s.org.id), p.data)
-    .order(p.data.sort, { ascending: p.data.dir === "asc", nullsFirst: false })
-    .order("id")
-    .range(from, from + p.data.pageSize - 1);
-  if (error) return { ok: false, error: "Chargement impossible." };
-  return { ok: true, data: { rows: (data ?? []) as unknown as LeadRow[], total: count ?? 0 } };
+  const { sort, dir, pageSize, cursor } = p.data;
+  const asc = dir === "asc";
+  let q = applyFilters(listQuery(supabase, g.s.org.id), p.data);
+  const keyset = cursor && p.data.page > 1 && supportsKeyset(sort) ? keysetFilter(sort, dir, cursor) : null;
+  if (keyset) q = (keyset.bound.op === "gte" ? q.gte(keyset.bound.col, keyset.bound.value) : q.lte(keyset.bound.col, keyset.bound.value)).or(keyset.or);
+  // pageSize + 1 lignes : la ligne en trop indique qu'une page suivante existe (sans compter).
+  const from = keyset ? 0 : (p.data.page - 1) * pageSize;
+  const ordered = q.order(sort, { ascending: asc, nullsFirst: false }).order("id", { ascending: asc }).range(from, from + pageSize);
+  const [list, total] = await Promise.all([
+    ordered,
+    // Compte plafonné, lancé en parallèle ; en cas d'échec, estimation à partir de la page.
+    countLeads(supabase, g.s.org.id, p.data).catch(() => null),
+  ]);
+  if (list.error) return { ok: false, error: "Chargement impossible." };
+  const all = (list.data ?? []) as unknown as LeadRow[];
+  const hasMore = all.length > pageSize;
+  const rows = all.slice(0, pageSize);
+  const seen = from + rows.length;
+  const count = total ?? (hasMore ? seen + 1 : seen);
+  return { ok: true, data: { rows, total: Math.max(count, seen), capped: count >= LEADS_COUNT_CAP, hasMore } };
 }
 
 export async function listKanbanAction(input: unknown): Promise<ActionResult<{ rows: LeadRow[]; total: number }>> {
@@ -71,9 +111,25 @@ export async function listKanbanAction(input: unknown): Promise<ActionResult<{ r
   const p = listParamsSchema.safeParse(input ?? {});
   if (!p.success) return invalid(p.error);
   const supabase = await createClient();
-  const { data, count, error } = await applyFilters(listQuery(supabase, g.s.org.id), p.data).order("position").limit(1000);
+  const { data, error } = await applyFilters(listQuery(supabase, g.s.org.id), p.data).order("position").limit(1000);
   if (error) return { ok: false, error: "Chargement impossible." };
-  return { ok: true, data: { rows: (data ?? []) as unknown as LeadRow[], total: count ?? 0 } };
+  const rows = (data ?? []) as unknown as LeadRow[];
+  // Moins de 1000 lignes : le total est exact sans requête de plus ; sinon compte plafonné.
+  const total = rows.length < 1000 ? rows.length : await countLeads(supabase, g.s.org.id, p.data).catch(() => rows.length);
+  return { ok: true, data: { rows, total } };
+}
+
+/** Message d'avertissement si un lead visible a déjà cet e-mail ou ce téléphone (normalisation partagée avec l'import), sinon null. */
+async function findDuplicates(supabase: SB, orgId: string, email: string | null | undefined, phone: string | null | undefined): Promise<string | null> {
+  const en = normalizeEmail(email);
+  const pn = normalizePhone(phone);
+  const found = new Map<string, string>();
+  const checks = ([["email_norm", en, "cet e-mail"], ["phone_norm", pn, "ce téléphone"]] as const).filter(([, val]) => !!val);
+  // Deux recherches indexées (org_id, email_norm / phone_norm), lancées en parallèle.
+  const results = await Promise.all(checks.map(([col, val]) => supabase.from("leads").select("id, first_name, last_name, company").eq("org_id", orgId).is("archived_at", null).eq(col, val!).limit(3)));
+  results.forEach(({ data }, i) => { for (const l of data ?? []) found.set(`${l.id}`, `${leadName(l)} (${checks[i]![2]})`); });
+  if (!found.size) return null;
+  return `Un lead existe déjà avec ces coordonnées :${[...found.values()].join(", ")}. Créer quand même ?`;
 }
 
 export async function createLeadAction(input: unknown): Promise<ActionResult<{ id: string }>> {
@@ -87,11 +143,16 @@ export async function createLeadAction(input: unknown): Promise<ActionResult<{ i
   if (!custom.ok) return { ok: false, error: Object.values(custom.errors)[0], fieldErrors: Object.fromEntries(Object.entries(custom.errors).map(([k, v]) => [`custom.${k}`, v])) };
   const d = p.data;
   const supabase = await createClient();
+  // Doublon (même e-mail / téléphone normalisé dans l'organisation, comme l'import et les webhooks) : avertir, sauf confirmation.
+  if (!d.allowDuplicate) {
+    const dup = await findDuplicates(supabase, s.org.id, d.email, d.phone);
+    if (dup) return { ok: false, code: "duplicate", error: dup };
+  }
   const { data, error } = await supabase
     .from("leads")
     .insert({
       org_id: s.org.id, created_by: s.user.id, status_id: d.statusId ?? undefined,
-      source_id: d.sourceId ?? null, assigned_to: d.assignedTo ?? null,
+      source_id: d.sourceId ?? null, call_domain_id: d.callDomainId ?? null, assigned_to: d.assignedTo ?? null,
       first_name: d.firstName, last_name: d.lastName, company: d.company || null, email: d.email || null, phone: d.phone || null,
       address: d.address || null, city: d.city || null, postal_code: d.postalCode || null, value: d.value ?? null, custom: custom.data,
     })
@@ -100,6 +161,7 @@ export async function createLeadAction(input: unknown): Promise<ActionResult<{ i
   if (error || !data) return { ok: false, error: mapDbError(error?.message, "Création impossible.") };
   // La base n'accepte le statut demandé que si le rôle y a droit (sinon statut initial) ; on tente alors le déplacement (transitions respectées).
   if (!s.isAdmin && d.statusId) await moveOne(s, supabase, data.id, d.statusId).catch(() => undefined);
+  after(() => mailLeadsAssigned(s.org.id, [data.id], d.assignedTo, s.user.id)); // e-mail à l'assigné (jamais à soi-même)
   dashboardCache.clear();
   revalidatePath("/leads");
   return { ok: true, data: { id: data.id } };
@@ -115,7 +177,7 @@ export async function updateLeadAction(input: unknown): Promise<ActionResult> {
   const patch: Record<string, unknown> = {};
   const c = p.data.core;
   if (c) {
-    const map: Record<string, string> = { firstName: "first_name", lastName: "last_name", company: "company", email: "email", phone: "phone", address: "address", city: "city", postalCode: "postal_code", value: "value", sourceId: "source_id", assignedTo: "assigned_to" };
+    const map: Record<string, string> = { firstName: "first_name", lastName: "last_name", company: "company", email: "email", phone: "phone", address: "address", city: "city", postalCode: "postal_code", value: "value", sourceId: "source_id", assignedTo: "assigned_to", callDomainId: "call_domain_id" };
     for (const [k, col] of Object.entries(map)) {
       const v = (c as Record<string, unknown>)[k];
       if (v !== undefined) patch[col] = v === "" ? (k === "firstName" || k === "lastName" ? "" : null) : v;
@@ -131,8 +193,10 @@ export async function updateLeadAction(input: unknown): Promise<ActionResult> {
   }
   if (Object.keys(patch).length === 0 && !customPatch) return { ok: true };
   if (Object.keys(patch).length > 0) {
+    const prevAssignee = typeof patch.assigned_to === "string" ? (await supabase.from("leads").select("assigned_to").eq("id", p.data.id).eq("org_id", s.org.id).maybeSingle()).data?.assigned_to : undefined;
     const { data, error } = await supabase.from("leads").update(patch).eq("id", p.data.id).eq("org_id", s.org.id).select("id");
     if (error || !data?.length) return { ok: false, error: mapDbError(error?.message ?? "row-level security", "Enregistrement impossible.") };
+    if (typeof patch.assigned_to === "string" && prevAssignee !== patch.assigned_to) after(() => mailLeadsAssigned(s.org.id, [p.data.id], patch.assigned_to as string, s.user.id));
   }
   if (customPatch) {
     const { error } = await supabase.rpc("patch_lead_custom", { p_lead: p.data.id, p_patch: customPatch });
@@ -213,10 +277,15 @@ export async function bulkAssignAction(input: unknown): Promise<ActionResult<Bul
   const p = bulkAssignSchema.safeParse(input);
   if (!p.success) return invalid(p.error);
   const supabase = await createClient();
-  return bulk(p.data.ids, async (id) => {
+  const changed: string[] = [];
+  const report = await bulk(p.data.ids, async (id) => {
+    const prev = p.data.assignedTo ? (await supabase.from("leads").select("assigned_to").eq("id", id).eq("org_id", g.s.org.id).maybeSingle()).data?.assigned_to : null;
     const { data, error } = await supabase.from("leads").update({ assigned_to: p.data.assignedTo }).eq("id", id).eq("org_id", g.s.org.id).select("id");
+    if (!error && data?.length && prev !== p.data.assignedTo) changed.push(id);
     return error || !data?.length ? { ok: false, error: mapDbError(error?.message ?? "row-level security") } : { ok: true };
   });
+  if (changed.length) after(() => mailLeadsAssigned(g.s.org.id, changed, p.data.assignedTo, g.s.user.id)); // au plus MAX_LEAD_MAILS mails
+  return report;
 }
 
 export async function bulkDeleteAction(input: unknown): Promise<ActionResult<BulkReport>> {
@@ -309,6 +378,9 @@ export async function uploadFileAction(formData: FormData): Promise<ActionResult
   const supabase = await createClient();
   const { data: lead } = await supabase.from("leads").select("id").eq("id", leadId.data).eq("org_id", g.s.org.id).maybeSingle();
   if (!lead) return { ok: false, error: "Lead introuvable." };
+  // Plafond de pièces jointes par lead (même règle en base : trigger lead_files_cap).
+  const { count: filesCount } = await supabase.from("lead_files").select("id", { count: "exact", head: true }).eq("lead_id", leadId.data).eq("org_id", g.s.org.id);
+  if ((filesCount ?? 0) >= MAX_FILES_PER_LEAD) return { ok: false, error: `Limite de ${MAX_FILES_PER_LEAD} fichiers par lead atteinte.` };
   const path = `${g.s.org.id}/${leadId.data}/${randomUUID()}-${safeFileName(file.name)}`;
   const up = await supabase.storage.from("lead-files").upload(path, file, { contentType: file.type, upsert: false });
   if (up.error) return { ok: false, error: "Envoi impossible." };
@@ -372,6 +444,14 @@ export async function listNotificationsAction(): Promise<ActionResult<{ items: N
     supabase.from("notifications").select("id", { count: "exact", head: true }).eq("org_id", g.s.org.id).is("read_at", null),
   ]);
   return { ok: true, data: { items: (list.data ?? []) as NotificationItem[], unread: unread.count ?? 0 } };
+}
+export async function markNotificationReadAction(input: { id: string }): Promise<ActionResult> {
+  const g = await guard([], "notifications");
+  if ("error" in g) return { ok: false, error: g.error };
+  if (typeof input?.id !== "string" || !/^[0-9a-f-]{36}$/i.test(input.id)) return { ok: false, error: "Notification invalide." };
+  const supabase = await createClient();
+  await supabase.from("notifications").update({ read_at: new Date().toISOString() }).eq("org_id", g.s.org.id).eq("id", input.id).is("read_at", null);
+  return { ok: true };
 }
 export async function markNotificationsReadAction(): Promise<ActionResult> {
   const g = await guard([], "notifications");

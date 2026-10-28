@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
@@ -5,7 +6,7 @@ import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GET, POST } from "@/app/api/webhooks/inbound/[token]/route";
 import { signPayload } from "@/lib/automation/signature";
-import { generateToken, newEndpointSecret, ipFromHeaders } from "@/lib/inbound/auth";
+import { encryptSecret, generateToken, newEndpointSecret, ipFromHeaders } from "@/lib/inbound/auth";
 import { dryRunSchema } from "@/lib/validation/import";
 import { autoMap } from "@/lib/import/mapping";
 
@@ -212,10 +213,17 @@ describe("réponses neutres, Meta, signature", () => {
     expect((await r.text()).length).toBeLessThanOrEqual(200);
     expect(read("src/lib/inbound/auth.ts")).toMatch(/timingSafeEqual/);
   });
-  it("Meta POST : seul le jeton d'URL protège (documenté) ; un jeton inconnu reste neutre", async () => {
+  it("Meta POST : signature X-Hub-Signature-256 obligatoire (le jeton d'URL seul est refusé) ; un jeton inconnu reste neutre", async () => {
     const m = eps.meta!;
     const body = JSON.stringify({ entry: [{ changes: [{ field: "leadgen", value: { field_data: [{ name: "email", values: ["meta.sec@x.io"] }, { name: "full_name", values: ["Meta Sec"] }] } }] }] });
-    expect((await call(m.token, body)).status).toBe(200);
+    // endpoint Meta sans secret d'application, ou sans signature valide : 401
+    expect((await call(m.token, body)).status).toBe(401);
+    expect((await call(m.token, body, { "x-hub-signature-256": `sha256=${"0".repeat(64)}` })).status).toBe(401);
+    // avec un secret d'application et la bonne signature : accepté
+    await admin.from("inbound_endpoints").update({ meta_app_secret_enc: encryptSecret("meta-sec-app-secret") }).eq("id", m.id);
+    const sig = `sha256=${createHmac("sha256", "meta-sec-app-secret").update(body).digest("hex")}`;
+    expect((await call(m.token, body)).status).toBe(401);
+    expect((await call(m.token, body, { "x-hub-signature-256": sig })).status).toBe(200);
     expect((await call(generateToken(), body)).status).toBe(404);
   });
   // FAILLE CONNUE (mineur/majeur selon exposition d'une fuite de base) : la clé HMAC est le SHA-256 du secret, stocké en base.

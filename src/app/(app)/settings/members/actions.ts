@@ -1,12 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { sendMail } from "@/lib/mailer";
+import { memberAccountMail } from "@/lib/mail/templates";
+import { notifySeatLimitReached } from "@/lib/billing/mails";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createInvitedUser, inviteLink } from "@/lib/invite";
 import { createClient } from "@/lib/supabase/server";
 import { RATE_LIMIT_MESSAGE, RULES } from "@/lib/rate-limit";
 import { allow } from "@/lib/rate-limit-server";
-import { isWritable } from "@/lib/billing/access";
+import { getEntitlement, isWritable } from "@/lib/billing/access";
 import { READ_ONLY_MESSAGE } from "@/lib/billing/entitlement";
+import { featureError, roleError } from "@/lib/billing/feature-guard";
+import { isFieldRole } from "@/lib/permissions";
 import { requireSession, sessionCan } from "@/lib/session";
 import { createMemberSchema, fieldErrors, firstError, memberStatusSchema, updateMemberRoleSchema } from "@/lib/validation/auth";
 
@@ -17,6 +24,7 @@ export interface ActionResult {
 }
 
 const DENIED: ActionResult = { ok: false, error: "Permission insuffisante." };
+const ACCOUNT_CREATE_FAILED = "Création impossible avec cette adresse. Si la personne a déjà un compte, demandez-lui de vous le confirmer.";
 
 function mapDbError(message: string | undefined): string {
   if (message?.includes("seat_limit_reached")) return "Limite de sièges atteinte. Passez à un plan supérieur.";
@@ -46,43 +54,48 @@ export async function createMemberAction(input: unknown): Promise<ActionResult> 
   if (!(await isWritable(s.org.id))) return { ok: false, error: READ_ONLY_MESSAGE };
   const parsed = createMemberSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: firstError(parsed.error), fieldErrors: fieldErrors(parsed.error) };
-  const { fullName, email, password, roleId } = parsed.data;
+  const { fullName, email, roleId, domainIds } = parsed.data;
 
   const supabase = await createClient();
-  const { data: role } = await supabase.from("roles").select("id, is_admin").eq("id", roleId).eq("org_id", s.org.id).maybeSingle();
+  const { data: role } = await supabase.from("roles").select("id, name, is_admin, is_system, system_key").eq("id", roleId).eq("org_id", s.org.id).maybeSingle();
   if (!role) return { ok: false, error: "Rôle introuvable." };
   if (role.is_admin && !s.isAdmin) return DENIED;
+  // Rôles spécialisés / sur mesure : Pro et au-dessus (essai : tout est permis). Seules les NOUVELLES attributions sont bloquées.
+  const roleLocked = await roleError(s.org.id, role);
+  if (roleLocked) return { ok: false, error: roleLocked };
 
-  if (s.org.seat_limit !== null) {
-    const { count } = await supabase
-      .from("memberships")
-      .select("id", { count: "exact", head: true })
-      .eq("org_id", s.org.id)
-      .eq("status", "active");
-    if ((count ?? 0) >= s.org.seat_limit) return { ok: false, error: mapDbError("seat_limit_reached") };
+  // Places : celles de la régie maître si l'organisation est une sous-régie (la maître paie pour toutes).
+  const seats = await getEntitlement(s.org.id, true);
+  if (seats.seatLimit !== null && seats.seatsUsed >= seats.seatLimit) {
+    after(() => notifySeatLimitReached(s.org.id, seats.seatLimit!)); // prévient les administrateurs (au plus 1 mail / semaine)
+    return { ok: false, error: mapDbError("seat_limit_reached") };
   }
 
   const admin = createAdminClient();
-  const { data: created, error: createError } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { full_name: fullName },
-    app_metadata: { provisioned_org: s.org.id },
-  });
-  if (createError || !created.user) {
-    const exists = createError?.message.toLowerCase().includes("already");
-    return { ok: false, error: exists ? "Un compte existe déjà avec cet e-mail." : "Création du compte impossible." };
-  }
+  // Compte sans mot de passe utilisable : la personne le choisit via le lien d'invitation à usage unique.
+  const created = await createInvitedUser({ email, fullName, orgId: s.org.id });
+  // Message neutre : ne révèle pas si l'adresse a déjà un compte (énumération inter-organisations).
+  if (!created) return { ok: false, error: ACCOUNT_CREATE_FAILED };
 
   const { error } = await supabase
     .from("memberships")
-    .insert({ org_id: s.org.id, user_id: created.user.id, role_id: roleId, status: "active" });
+    .insert({ org_id: s.org.id, user_id: created.userId, role_id: roleId, status: "active" });
   if (error) {
-    await admin.auth.admin.deleteUser(created.user.id);
+    await admin.auth.admin.deleteUser(created.userId);
     return { ok: false, error: mapDbError(error.message) };
   }
+  // Domaines de travail (facultatif, plan Pro+) : un échec n'annule pas l'invitation, l'administrateur les règle ensuite dans la fiche du membre.
+  if (domainIds?.length && !(await featureError(s.org.id, "call_script_programming")) && (sessionCan(s, "members.manage") || sessionCan(s, "settings.manage"))) {
+    await supabase.from("member_call_domains").insert(domainIds.map((domain_id) => ({ org_id: s.org.id, user_id: created.userId, domain_id })));
+  }
+  const resetUrl = await inviteLink(email);
+  if (!resetUrl) {
+    await admin.auth.admin.deleteUser(created.userId); // sans lien, le compte serait inaccessible : on annule (cascade sur le siège)
+    return { ok: false, error: "Invitation impossible pour le moment. Réessayez." };
+  }
   revalidatePath("/settings/members");
+  // Invitation envoyée après la réponse ; un échec d'e-mail ne remet pas en cause la création (le membre peut utiliser « Mot de passe oublié »).
+  after(() => sendMail({ to: email, ...memberAccountMail({ memberName: fullName, orgName: s.org.name, inviterName: s.profile.full_name ?? s.user.email, roleName: role.name, email, resetUrl }) }).then(() => undefined, () => undefined));
   return { ok: true };
 }
 
@@ -108,8 +121,11 @@ export async function updateMemberRoleAction(input: unknown): Promise<ActionResu
   if (!target) return { ok: false, error: "Membre introuvable." };
 
   const supabase = await createClient();
-  const { data: role } = await supabase.from("roles").select("is_admin").eq("id", parsed.data.roleId).eq("org_id", s.org.id).maybeSingle();
+  const { data: role } = await supabase.from("roles").select("name, is_admin, is_system, system_key, is_field, permissions").eq("id", parsed.data.roleId).eq("org_id", s.org.id).maybeSingle();
   if (!role) return { ok: false, error: "Rôle introuvable." };
+  // Gating par plan : on bloque seulement la nouvelle attribution (un membre déjà Pro après un downgrade garde son rôle, mais ne peut pas le reprendre une fois changé).
+  const roleLocked = await roleError(s.org.id, role);
+  if (roleLocked) return { ok: false, error: roleLocked };
   if (target.role.is_admin && !role.is_admin && target.status === "active" && (await activeAdminCount(s.org.id)) <= 1) {
     return { ok: false, error: "Il doit rester au moins un administrateur actif." };
   }
@@ -120,6 +136,11 @@ export async function updateMemberRoleAction(input: unknown): Promise<ActionResu
     .eq("org_id", s.org.id)
     .select("id");
   if (error || !data?.length) return { ok: false, error: mapDbError(error?.message ?? "row-level security") };
+  // Les zones ne concernent que les rôles terrain : le nouveau rôle n'en est pas un, on désactive la zone (le trigger SQL
+  // 20260202000001 le fait aussi ; ceci couvre l'intervalle avant migration). Échec ignoré : la répartition filtre de toute façon.
+  if (!isFieldRole({ is_admin: role.is_admin, is_field: role.is_field, permissions: role.permissions ?? [] })) {
+    await supabase.from("sales_zones").update({ active: false }).eq("org_id", s.org.id).eq("user_id", target.user_id).eq("active", true);
+  }
   revalidatePath("/settings/members");
   return { ok: true };
 }

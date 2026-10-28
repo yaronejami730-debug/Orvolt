@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyTemplate } from "@/lib/apply-template";
 
 // QA2 S7 : lecture seule (org_is_writable), colonnes de facturation, seed, pages publiques, audit transverse.
@@ -272,27 +272,49 @@ describe("seed, pages publiques, secrets", () => {
     expect(() => assertLocalTarget(u, { CONFIRM_REMOTE_SEED: "prod.example.com" })).toThrow();
     expect(() => assertLocalTarget(u, { ALLOW_REMOTE_SEED: "1", CONFIRM_REMOTE_SEED: "prod.example.com" })).not.toThrow();
   });
-  it("JSON-LD : '<' échappé (aucune sortie de balise possible) ; seul dangerouslySetInnerHTML autorisé", async () => {
-    const src = read("src/components/marketing/json-ld.tsx");
-    expect(src).toMatch(/JSON\.stringify\(data\)\.replace\(\/<\/g, "\\\\u003c"\)/);
-    const out = JSON.stringify({ name: "</script><script>alert(1)</script>", x: "<!--" }).replace(/</g, "\\u003c");
+  it("JSON-LD : '<' échappé par serializeJsonLd (aucune sortie de balise possible) ; seul dangerouslySetInnerHTML autorisé", async () => {
+    const { serializeJsonLd } = await import("@/lib/seo");
+    const evil = { name: "</script><script>alert(1)</script>", x: "<!--", y: "a\u2028b\u2029c" };
+    const out = serializeJsonLd(evil);
+    expect(out).not.toMatch(/<|\u2028|\u2029/); // aucun '<' ni séparateur de ligne Unicode brut
     expect(out).not.toMatch(/<\/?script|<!--/i);
-    expect(JSON.parse(out).name).toBe("</script><script>alert(1)</script>");
+    expect(JSON.parse(out)).toEqual(evil); // l'échappement ne perd aucune donnée
+    const src = read("src/components/marketing/json-ld.tsx");
+    expect(src).toMatch(/__html: serializeJsonLd\(data\)/); // le composant passe toujours par le sérialiseur sûr
     expect(src).not.toMatch(/\{\s*data\s*:\s*string|children/); // pas de contenu HTML libre : seul un objet sérialisé
     const walk = (d: string): string[] => readdirSync(d).flatMap((f) => { const p = path.join(d, f); return statSync(p).isDirectory() ? walk(p) : [p]; });
     const bad = walk(path.join(root, "src")).filter((f) => /\.(tsx?)$/.test(f) && /dangerouslySetInnerHTML/.test(readFileSync(f, "utf8")) && !f.endsWith("marketing/json-ld.tsx"));
     expect(bad).toEqual([]);
   });
-  it("en-têtes de sécurité et CSP intacts ; aucune redirection pilotée par paramètre ; pages légales publiques seulement", () => {
+  it("en-têtes de sécurité et CSP à nonce intacts ; aucune redirection pilotée par paramètre ; pages légales publiques seulement", async () => {
     const cfg = read("next.config.ts");
-    for (const h of ["Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy", "Strict-Transport-Security", "Permissions-Policy"]) expect(cfg, h).toContain(h);
-    expect(cfg).toMatch(/frame-ancestors 'none'/);
-    expect(cfg).toMatch(/object-src 'none'/);
-    expect(cfg).toMatch(/base-uri 'self'/);
-    const scriptSrc = cfg.match(/`script-src ([^`]*)`/)![1]!;
-    expect(scriptSrc).not.toMatch(/\*|https:\s|data:/); // aucune source générique pour les scripts
+    for (const h of ["X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy", "Strict-Transport-Security", "Permissions-Policy"]) expect(cfg, h).toContain(h);
+    // CSP : générée par requête (nonce) dans le middleware, plus statique dans next.config.ts
+    const mw = read("src/middleware.ts");
+    expect(mw).toMatch(/Content-Security-Policy/);
+    expect(mw).toMatch(/makeNonce\(\)/);
+    expect(mw).toMatch(/buildCsp\(nonce\)/);
+    const { buildCsp, makeNonce } = await import("@/lib/csp");
+    const n1 = makeNonce(), n2 = makeNonce();
+    expect(n1).not.toBe(n2); // nonce différent à chaque requête
+    expect(atob(n1)).toHaveLength(16); // 128 bits
+    const csp = buildCsp(n1);
+    expect(csp).toContain(`'nonce-${n1}'`);
+    expect(csp).toMatch(/frame-ancestors 'none'/);
+    expect(csp).toMatch(/object-src 'none'/);
+    expect(csp).toMatch(/base-uri 'self'/);
+    const scriptSrc = csp.split("; ").find((d) => d.startsWith("script-src "))!;
+    expect(scriptSrc).not.toMatch(/\*|https:\s|data:|'unsafe-inline'/); // aucune source générique, plus d'unsafe-inline pour les scripts
     expect(scriptSrc).toContain("https://js.stripe.com");
-    expect(cfg).toMatch(/isProd \? "" : "'unsafe-eval' "/); // unsafe-eval uniquement hors production
+    // unsafe-eval uniquement hors production (le module lit NODE_ENV à l'import)
+    expect(read("src/lib/csp.ts")).toMatch(/isProd \? "" : " 'unsafe-eval'"/);
+    vi.stubEnv("NODE_ENV", "production");
+    vi.resetModules();
+    try {
+      const prod = (await import("@/lib/csp")).buildCsp("abc");
+      expect(prod).not.toContain("unsafe-eval");
+      expect(prod).toContain("'nonce-abc'");
+    } finally { vi.unstubAllEnvs(); vi.resetModules(); }
     const walk = (d: string): string[] => readdirSync(d).flatMap((f) => { const p = path.join(d, f); return statSync(p).isDirectory() ? walk(p) : [p]; });
     const files = walk(path.join(root, "src")).filter((f) => /\.(tsx?)$/.test(f));
     const redir = files.filter((f) => /(redirect|NextResponse\.redirect)\([^)]*(searchParams|params\.|req\.|request\.|query)/.test(readFileSync(f, "utf8")));
@@ -320,8 +342,11 @@ describe("seed, pages publiques, secrets", () => {
   it("actions de facturation : billing.manage + organisation de la session + plan en liste blanche ; aucun log de secret", () => {
     const act = read("src/app/(app)/settings/billing/actions.ts");
     expect(act).toMatch(/guard\("billing\.manage", "billing"\)/);
-    expect(act).toMatch(/\.eq\("id", g\.s\.org\.id\)/);
-    expect(act).not.toMatch(/orgId|org_id/); // jamais lue de l'entrée client
+    expect(act.match(/guard\("billing\.manage", "billing"\)/g)!.length).toBeGreaterThanOrEqual(2); // contexte commun + enregistrement du plan
+    expect(act).toMatch(/\.eq\("id", g\.s\.org\.id\)/); // organisation = celle de la session
+    // l'organisation n'est jamais lue de l'entrée client : aucun schéma zod ne l'accepte et aucun `input.org…` n'est utilisé
+    expect(act).not.toMatch(/z\.object\(\{[^}]*\b(orgId|org_id)\b/);
+    expect(act).not.toMatch(/\b(input|p\.data|parsed\.data)\.(orgId|org_id)\b/);
     expect(act).toMatch(/z\.enum\(PLAN_IDS\)/);
     const walk = (d: string): string[] => readdirSync(d).flatMap((f) => { const p = path.join(d, f); return statSync(p).isDirectory() ? walk(p) : [p]; });
     const logs = walk(path.join(root, "src")).filter((f) => /\.(tsx?)$/.test(f)).filter((f) => /console\.(log|info|error|warn)\([^)]*(secret|SECRET|signature|apiKey|STRIPE_|authorization|service_role)/i.test(readFileSync(f, "utf8")));

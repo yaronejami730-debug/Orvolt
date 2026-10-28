@@ -18,8 +18,8 @@ export default defineConfig({
       url: "http://localhost:3000/login",
       reuseExistingServer: true,
       env: {
-        GEOCODER: "mock", E2E_ALLOW_MOCK_GEOCODER: "1", // géocodage déterministe, sans réseau
-        STRIPE_API_BASE: "http://127.0.0.1:12111", STRIPE_SECRET_KEY: "sk_test_mock", E2E_ALLOW_STRIPE_MOCK: "1", // Stripe simulé
+        ALLOW_DEV_CODE: "1", GEOCODER: "mock", E2E_ALLOW_MOCK_GEOCODER: "1", // géocodage déterministe, sans réseau
+        ONBOARDING_REQUIRE_PLAN: "0", STRIPE_API_BASE: "http://127.0.0.1:12111", STRIPE_SECRET_KEY: "sk_test_mock", E2E_ALLOW_STRIPE_MOCK: "1", // Stripe simulé
         STRIPE_WEBHOOK_SECRET: "whsec_e2e_test_secret", STRIPE_PRICE_STARTER: "", STRIPE_PRICE_PRO: "", STRIPE_PRICE_BUSINESS: "",
       },
       timeout: 180_000,

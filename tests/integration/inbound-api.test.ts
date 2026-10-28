@@ -1,9 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
+import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GET, POST } from "@/app/api/webhooks/inbound/[token]/route";
 import { signPayload } from "@/lib/automation/signature";
-import { generateToken, newEndpointSecret } from "@/lib/inbound/auth";
+import { encryptSecret, generateToken, newEndpointSecret } from "@/lib/inbound/auth";
 import { limiter } from "@/lib/rate-limit";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -14,6 +15,7 @@ const run = Math.random().toString(36).slice(2, 8);
 let userA = "", orgA = "", orgB = "", srcId = "";
 interface Ep { id: string; token: string; secret: string; hash: string }
 const eps: Record<string, Ep> = {};
+const META_APP_SECRET = "meta-app-secret-api-test";
 
 async function mkOrg(name: string, owner: string) {
   const { data, error } = await admin.from("organizations").insert({ name, slug: `${name.toLowerCase().replace(/\W+/g, "-")}-${run}`, template: "generic", created_by: owner }).select("id").single();
@@ -40,7 +42,7 @@ beforeAll(async () => {
   orgB = await mkOrg(`API B ${run}`, userA);
   srcId = (await admin.from("lead_sources").insert({ org_id: orgA, name: "Webhook test" }).select("id").single()).data!.id;
   eps.generic = await mkEp(orgA, "generic", { default_source_id: srcId });
-  eps.meta = await mkEp(orgA, "meta");
+  eps.meta = await mkEp(orgA, "meta", { meta_app_secret_enc: encryptSecret(META_APP_SECRET) });
   eps.google = await mkEp(orgA, "google");
   eps.off = await mkEp(orgA, "generic", { active: false });
   eps.rate = await mkEp(orgA, "generic");
@@ -135,7 +137,13 @@ describe("API webhook entrant", () => {
     expect(await ok.text()).toBe("12345");
     expect((await GET(url("mauvais"), { params: Promise.resolve({ token: e.token }) })).status).toBe(404);
     const payload = { object: "page", entry: [{ changes: [{ field: "leadgen", value: { field_data: [{ name: "full_name", values: ["Meta Lead"] }, { name: "email", values: ["meta@example.com"] }] } }] }] };
-    const r = await call(e.token, JSON.stringify(payload));
+    const raw = JSON.stringify(payload);
+    // la signature X-Hub-Signature-256 est obligatoire : sans en-tête ou avec une mauvaise signature, rien n'est créé
+    expect((await call(e.token, raw)).status).toBe(401);
+    expect((await call(e.token, raw, { "x-hub-signature-256": `sha256=${"0".repeat(64)}` })).status).toBe(401);
+    expect((await leadsOf(orgA)).some((l) => l.email === "meta@example.com")).toBe(false);
+    const sig = `sha256=${createHmac("sha256", META_APP_SECRET).update(raw).digest("hex")}`;
+    const r = await call(e.token, raw, { "x-hub-signature-256": sig });
     expect(await r.json()).toMatchObject({ status: "created" });
     expect((await leadsOf(orgA)).some((l) => l.email === "meta@example.com")).toBe(true);
   });

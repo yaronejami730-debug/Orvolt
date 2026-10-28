@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarPlus, MapPin, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
@@ -15,11 +15,12 @@ import { APPT_STATUSES, type ApptStatus } from "@/lib/validation/appointments";
 import { AppointmentDialog, distanceBadgeTone, type DialogLead } from "./appointment-dialog";
 import { DIST_LABEL, fmtFull, STATUS_COLOR, STATUS_LABEL } from "./status";
 
-export function AppointmentsTab({ appts, lead, members, userId, canAssignOthers, canManage }: {
-  appts: ApptRow[]; lead: DialogLead; members: { id: string; name: string }[]; userId: string; canAssignOthers: boolean; canManage: boolean;
+export function AppointmentsTab({ appts, lead, members, userId, canAssignOthers, canManage, openNew, onOpened }: {
+  openNew?: boolean; onOpened?: () => void; appts: ApptRow[]; lead: DialogLead; members: { id: string; name: string }[]; userId: string; canAssignOthers: boolean; canManage: boolean;
 }) {
   const router = useRouter();
   const [dialog, setDialog] = useState<{ editing: ApptRow | null } | null>(null);
+  useEffect(() => { if (openNew && canManage) { setDialog({ editing: null }); onOpened?.(); } }, [openNew, canManage, onOpened]);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const now = Date.now();

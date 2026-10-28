@@ -4,56 +4,44 @@ import { FAQ } from "@/components/marketing/faq-data";
 import { FeatureDemos } from "@/components/marketing/feature-demos";
 import { Hero } from "@/components/marketing/hero";
 import { JsonLd } from "@/components/marketing/json-ld";
+import { RelatedLinks } from "@/components/marketing/page-sections";
 import { PricingSection } from "@/components/marketing/pricing-section";
-import { Features, FinalCta, HowItWorks, Statement, Trades } from "@/components/marketing/sections";
-import { PLAN_LIST } from "@/lib/billing/plans";
+import { CtaBand, Features, FinalCta, HowItWorks, Statement, Trades } from "@/components/marketing/sections";
+import { StickyTrialBar } from "@/components/marketing/sticky-trial-bar";
+import { TRIAL_DAYS } from "@/lib/billing/plans";
 import { isSignedIn } from "@/lib/marketing-session";
-import { SITE_DESCRIPTION, SITE_NAME, siteUrl } from "@/lib/site";
+import { faqSchema, graph, organizationSchema, pageMetadata, softwareSchema, websiteSchema } from "@/lib/seo";
 
-const title = "LeadForge, suivez chaque lead de l'appel à la signature";
-
-export const metadata: Metadata = {
-  title: { absolute: title },
-  description: SITE_DESCRIPTION,
-  alternates: { canonical: "/" },
-  openGraph: { type: "website", url: "/", siteName: SITE_NAME, title, description: SITE_DESCRIPTION, locale: "fr_FR", images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "LeadForge, suivez chaque lead de l'appel à la signature" }] },
-  twitter: { card: "summary_large_image", title, description: SITE_DESCRIPTION },
-};
+export const metadata: Metadata = pageMetadata("/");
 
 export default async function LandingPage() {
   const signedIn = await isSignedIn();
-  const base = siteUrl();
   return (
     <>
-      <JsonLd
-        data={[
-          {
-            "@context": "https://schema.org",
-            "@type": "SoftwareApplication",
-            name: SITE_NAME,
-            applicationCategory: "BusinessApplication",
-            operatingSystem: "Web",
-            description: SITE_DESCRIPTION,
-            url: base,
-            inLanguage: "fr-FR",
-            offers: PLAN_LIST.map((p) => ({ "@type": "Offer", name: p.name, price: (p.priceCents / 100).toFixed(2), priceCurrency: "EUR", url: `${base}/pricing` })),
-          },
-          {
-            "@context": "https://schema.org",
-            "@type": "FAQPage",
-            mainEntity: FAQ.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
-          },
-        ]}
-      />
+      <JsonLd data={graph(organizationSchema(), websiteSchema(), softwareSchema(), faqSchema(FAQ))} />
       <Hero signedIn={signedIn} />
       <Statement />
+      <CtaBand signedIn={signedIn} title="Voyez-le tourner avec vos propres leads." text={`Créez votre espace en quelques minutes et testez ${TRIAL_DAYS} jours avec votre équipe.`} />
       <Trades />
       <Features />
       <FeatureDemos />
+      <CtaBand signedIn={signedIn} title="Kanban, rôles, agenda : tout est dans l'essai." text={`Pendant ${TRIAL_DAYS} jours, vous utilisez toutes les fonctionnalités avec votre équipe.`} />
       <HowItWorks />
+      <CtaBand signedIn={signedIn} title="Prêt en trois étapes. Lancez la première maintenant." text="Le modèle énergie est déjà en place, vous n'avez qu'à l'adapter." />
       <PricingSection signedIn={signedIn} />
+      <RelatedLinks
+        links={[
+          { href: "/fonctionnalites", label: "Toutes les fonctionnalités", text: "Statuts, rôles, agenda, répartition, import et webhooks." },
+          { href: "/solutions/installateurs-energie", label: "CRM pour installateurs d'énergie", text: "Solaire, pompe à chaleur, isolation : le modèle prêt à l'emploi." },
+          { href: "/solutions/regies-prospection", label: "CRM pour régies de prospection", text: "Prospecteurs, confirmateurs, commerciaux et régies partenaires." },
+          { href: "/pricing", label: "Tarifs", text: "Quatre formules, essai gratuit, paiement sécurisé par Stripe." },
+          { href: "/contact", label: "Être recontacté", text: "Laissez vos coordonnées, un conseiller vous rappelle." },
+        ]}
+      />
       <FaqSection />
+      <CtaBand signedIn={signedIn} title="Une question reste ouverte ? Essayez avec votre équipe." />
       <FinalCta signedIn={signedIn} />
+      {!signedIn && <StickyTrialBar />}
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
 import { expect, test, type Page } from "@playwright/test";
+import { signupViaForm } from "./helpers";
 
 config({ path: ".env.local", quiet: true });
 
@@ -37,14 +38,9 @@ test("accès protégé : redirection vers /login", async ({ page }) => {
 });
 
 test("inscription, déconnexion, connexion, création d'un commercial", async ({ page }) => {
-  await page.goto("/signup");
-  await page.getByLabel("Votre nom").fill(owner.name);
-  await page.getByLabel("Nom de l'entreprise").fill(owner.org);
-  await page.getByLabel("E-mail").fill(owner.email);
-  await page.getByLabel("Mot de passe").fill(owner.password);
-  await page.getByTestId("template-energie").click();
-  await page.getByRole("button", { name: "Créer mon espace" }).click();
-  await expect(page).toHaveURL(/\/onboarding/);
+  // Inscription en un seul écran (activité comprise) : le code part au blur de l'e-mail, aucun écran d'activité ensuite.
+  await signupViaForm(page, { first: "Test", last: owner.name, email: owner.email, password: owner.password, org: owner.org, phone: "0612345678" });
+  await expect(page).toHaveURL(/\/onboarding$/);
   await page.getByRole("link", { name: "Commencer" }).click();
   await expect(page).toHaveURL(/\/leads/);
   await page.goto("/dashboard");

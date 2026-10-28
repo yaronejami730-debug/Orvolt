@@ -243,6 +243,7 @@ function ActionsTab({ status, actions, roles, members, onSaved, setDirty }: TabP
 
   const patch = (i: number, c: Cfg) => {
     setList((l) => l.map((a, j) => (j === i ? { ...a, config: { ...a.config, ...c } } : a)));
+    setErrors(undefined);
     setDirty(true);
   };
   const add = (type: ActionRow["type"]) => {
@@ -252,10 +253,12 @@ function ActionsTab({ status, actions, roles, members, onSaved, setDirty }: TabP
       : type === "create_task" ? { title: "", delay: 1, unit: "days", assignee: "assignee" }
       : { url: "" };
     setList((l) => [...l, { type, enabled: true, config }]);
+    setErrors(undefined);
     setDirty(true);
   };
 
   function save() {
+    setErrors(undefined);
     start(async () => {
       const res = await saveActionsAction({ statusId: status.id, actions: list });
       if (res.ok) { toast.success("Actions enregistrées."); setErrors(undefined); setDirty(false); onSaved(); }
@@ -286,8 +289,8 @@ function ActionsTab({ status, actions, roles, members, onSaved, setDirty }: TabP
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium">{TYPE_LABEL[a.type]}</span>
               <span className="flex items-center gap-2">
-                <Switch aria-label="Action active" checked={a.enabled} onCheckedChange={(v) => { setList((l) => l.map((x, j) => (j === i ? { ...x, enabled: v } : x))); setDirty(true); }} />
-                <Button size="icon" variant="ghost" aria-label="Supprimer l'action" onClick={() => { setList((l) => l.filter((_, j) => j !== i)); setDirty(true); }}><Trash2 className="size-4" /></Button>
+                <Switch aria-label="Action active" checked={a.enabled} onCheckedChange={(v) => { setList((l) => l.map((x, j) => (j === i ? { ...x, enabled: v } : x))); setErrors(undefined); setDirty(true); }} />
+                <Button size="icon" variant="ghost" aria-label="Supprimer l'action" onClick={() => { setList((l) => l.filter((_, j) => j !== i)); setErrors(undefined); setDirty(true); }}><Trash2 className="size-4" /></Button>
               </span>
             </div>
             {a.type === "assign" && (

@@ -68,7 +68,7 @@ export function SourcesManager({ sources }: { sources: SourceRow[] }) {
                   });
                 }}>
                   <div className="flex gap-1">
-                    <Input aria-label="Renommer la source" value={editName} onChange={(e) => { setEditName(e.target.value); setEditError(undefined); }} className="h-9" />
+                    <Input aria-label="Renommer la source" autoFocus onFocus={(e) => e.currentTarget.select()} value={editName} onChange={(e) => { setEditName(e.target.value); setEditError(undefined); }} className="h-9" />
                     <Button size="icon" variant="ghost" type="submit" aria-label="Valider"><Check className="size-4" /></Button>
                     <Button size="icon" variant="ghost" aria-label="Annuler" onClick={() => setEditId(null)}><X className="size-4" /></Button>
                   </div>

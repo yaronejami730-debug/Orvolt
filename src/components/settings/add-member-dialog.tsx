@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { UserPlus } from "lucide-react";
+import Link from "next/link";
+import { Lock, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { createMemberAction } from "@/app/(app)/settings/members/actions";
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,11 @@ import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { DomainChecks } from "@/components/settings/member-call-programming";
 
-export function AddMemberDialog({ roles }: { roles: { id: string; name: string }[] }) {
+export function AddMemberDialog({ roles, lockedRoleIds = [], lockPlan = "Pro", domains = [] }: { roles: { id: string; name: string }[]; lockedRoleIds?: string[]; lockPlan?: string; domains?: { id: string; name: string; color: string | null; active: boolean; position: number }[] }) {
   const [open, setOpen] = useState(false);
+  const [domainIds, setDomainIds] = useState<string[]>([]);
   const [error, setError] = useState<string>();
   const [fe, setFe] = useState<Record<string, string>>({});
   const bad = (k: string) => ({ "aria-invalid": fe[k] ? true : undefined, "aria-describedby": fe[k] ? `${k}-error` : undefined });
@@ -24,14 +27,15 @@ export function AddMemberDialog({ roles }: { roles: { id: string; name: string }
     const input = {
       fullName: String(fd.get("fullName") ?? ""),
       email: String(fd.get("email") ?? ""),
-      password: String(fd.get("password") ?? ""),
       roleId: String(fd.get("roleId") ?? ""),
+      ...(domainIds.length ? { domainIds } : {}),
     };
     start(async () => {
       const res = await createMemberAction(input);
       if (res.ok) {
-        toast.success("Membre ajouté.");
+        toast.success("Invitation envoyée.");
         setOpen(false);
+        setDomainIds([]);
         setError(undefined);
         setFe({});
       } else {
@@ -49,7 +53,7 @@ export function AddMemberDialog({ roles }: { roles: { id: string; name: string }
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Ajouter un membre</DialogTitle>
-          <DialogDescription>Créez un compte avec un mot de passe temporaire à transmettre à la personne.</DialogDescription>
+          <DialogDescription>La personne reçoit un e-mail avec un lien à usage unique pour choisir son mot de passe. Son compte n&apos;est utilisable qu&apos;après cette étape.</DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
           <div className="space-y-2">
@@ -63,20 +67,27 @@ export function AddMemberDialog({ roles }: { roles: { id: string; name: string }
             <FieldError id="email-error" message={fe.email} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="m-pass">Mot de passe temporaire</Label>
-            <Input id="m-pass" name="password" {...bad("password")} type="text" autoComplete="off" minLength={8} required />
-            <FieldError id="password-error" message={fe.password} />
-          </div>
-          <div className="space-y-2">
             <Label htmlFor="m-role">Rôle</Label>
-            <Select id="m-role" name="roleId" required defaultValue={roles.find((r) => r.name === "Commercial")?.id ?? roles[0]?.id}>
+            <Select id="m-role" name="roleId" required defaultValue={(roles.find((r) => r.name === "Commercial" && !lockedRoleIds.includes(r.id)) ?? roles.find((r) => !lockedRoleIds.includes(r.id)))?.id}>
               {roles.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
+                <option key={r.id} value={r.id} disabled={lockedRoleIds.includes(r.id)}>{r.name}{lockedRoleIds.includes(r.id) ? ` (${lockPlan})` : ""}</option>
               ))}
             </Select>
+            {lockedRoleIds.length > 0 && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="roles-locked">
+                <Lock className="size-3" aria-hidden /> Les rôles prospecteur, confirmateur, commercial et poseur sont disponibles avec le plan {lockPlan}.{" "}
+                <Link href="/settings/billing" className="text-link underline-offset-2 hover:underline">Voir les formules</Link>
+              </p>
+            )}
           </div>
+          {domains.length > 0 && (
+            <div className="space-y-2">
+              <Label>Domaine(s) de travail (facultatif)</Label>
+              <DomainChecks domains={domains.filter((d) => d.active)} value={domainIds} onChange={setDomainIds} idPrefix="new-md" />
+            </div>
+          )}
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" className="w-full" loading={pending}>Créer le membre</Button>
+          <Button type="submit" className="w-full" loading={pending}>Envoyer l&apos;invitation</Button>
         </form>
       </DialogContent>
     </Dialog>

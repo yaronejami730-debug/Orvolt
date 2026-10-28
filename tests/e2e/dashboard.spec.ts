@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
-import { fillEnergyRequired } from "./helpers";
+import { fillEnergyRequired, signupViaForm } from "./helpers";
 import { expect, test, type Page } from "@playwright/test";
 
 config({ path: ".env.local", quiet: true });
@@ -41,14 +41,8 @@ test.afterAll(async () => {
 });
 
 test("tableau de bord : totaux exacts, période, filtres, vue restreinte, mobile", async ({ page }) => {
-  await page.goto("/signup");
-  await page.getByLabel("Votre nom").fill(owner.name);
-  await page.getByLabel("Nom de l'entreprise").fill(owner.org);
-  await page.getByLabel("E-mail").fill(owner.email);
-  await page.getByLabel("Mot de passe").fill(owner.password);
-  await page.getByTestId("template-energie").click();
-  await page.getByRole("button", { name: "Créer mon espace" }).click();
-  await expect(page).toHaveURL(/\/onboarding/);
+  await signupViaForm(page, { first: "Test", last: owner.name, email: owner.email, password: owner.password, org: owner.org, phone: "0612345678", siret: "73282932000074" });
+  await expect(page).toHaveURL(/\/onboarding$/);
 
   // Dashboard vide
   await page.goto("/dashboard");
@@ -159,13 +153,8 @@ test("tableau de bord : totaux exacts, période, filtres, vue restreinte, mobile
 
 test("sans dashboard.view : accès rapides, pas de statistiques", async ({ page }) => {
   const e = { email: `plain-${run}@e2e.test`, org: `Dash Plain ${run}` };
-  await page.goto("/signup");
-  await page.getByLabel("Votre nom").fill("Paul Plain");
-  await page.getByLabel("Nom de l'entreprise").fill(e.org);
-  await page.getByLabel("E-mail").fill(e.email);
-  await page.getByLabel("Mot de passe").fill(owner.password);
-  await page.getByRole("button", { name: "Créer mon espace" }).click();
-  await expect(page).toHaveURL(/\/onboarding/);
+  await signupViaForm(page, { first: "Test", last: "Paul Plain", email: e.email, password: owner.password, org: e.org, phone: "0612345678", siret: "73282932000074" });
+  await expect(page).toHaveURL(/\/onboarding$/);
   await page.goto("/settings/members");
   await page.getByRole("button", { name: "Ajouter un membre" }).click();
   await page.getByLabel("Nom complet").fill("Simple Vendeur");

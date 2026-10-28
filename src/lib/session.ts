@@ -11,6 +11,7 @@ export const ORG_COOKIE_OPTIONS = {
   httpOnly: true,
   sameSite: "lax" as const,
   secure: process.env.NODE_ENV === "production",
+  maxAge: 60 * 60 * 24 * 30, // 30 jours (préférence d'organisation active, revalidée côté serveur à chaque requête)
 };
 
 export interface OrgSummary {
@@ -22,12 +23,19 @@ export interface OrgSummary {
   subscription_status: string;
   trial_ends_at: string | null;
   seat_limit: number | null;
+  /** Régie maître (null = organisation indépendante ou maître). */
+  parent_org_id: string | null;
+  org_type: "installer" | "agency" | null;
+  /** null = onboarding en cours (accès à l'application bloqué jusqu'à son terme). */
+  onboarded_at: string | null;
 }
 export interface RoleSummary {
   id: string;
   name: string;
   is_admin: boolean;
   is_system: boolean;
+  /** Rôle terrain (commercial) : seul à avoir une zone et à recevoir des RDV répartis. */
+  is_field: boolean;
   permissions: string[];
 }
 export interface AppSession {
@@ -49,7 +57,7 @@ interface MembershipRow {
   role: RoleSummary | null;
 }
 
-const ORG_COLS = "id, name, slug, template, plan, subscription_status, trial_ends_at, seat_limit";
+const ORG_COLS = "id, name, slug, template, plan, subscription_status, trial_ends_at, seat_limit, parent_org_id, org_type, onboarded_at";
 
 /** Session applicative (utilisateur + org active + rôle + permissions). Mise en cache par requête. */
 export const getSession = cache(async (): Promise<AppSession | null> => {
@@ -62,7 +70,7 @@ export const getSession = cache(async (): Promise<AppSession | null> => {
   const [{ data: rows }, { data: profile }] = await Promise.all([
     supabase
       .from("memberships")
-      .select(`id, org_id, role_id, organization:organizations(${ORG_COLS}), role:roles(id, name, is_admin, is_system, permissions)`)
+      .select(`id, org_id, role_id, organization:organizations(${ORG_COLS}), role:roles(id, name, is_admin, is_system, is_field, permissions)`)
       .eq("user_id", user.id)
       .eq("status", "active")
       .order("created_at", { ascending: true }),

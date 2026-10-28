@@ -4,7 +4,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { dashboardCache } from "@/lib/dashboard/cache";
 import { invalidateEntitlement } from "./access";
 import { mapStripeEvent, type Mapped } from "./events";
+import { sendBillingMails } from "./mails";
 import type { PlanId } from "./plans";
+import { trackFunnel } from "@/lib/funnel/track";
+
+/** Un événement « processing » plus ancien que ça est considéré comme planté et peut être repris. */
+export const STUCK_AFTER_MS = 5 * 60_000;
 
 export type ProcessResult = { result: "processed" | "duplicate" | "ignored"; reason?: string; orgId?: string };
 
@@ -12,30 +17,36 @@ const priceIdsFromEnv = (): Partial<Record<PlanId, string | undefined>> => ({
   starter: process.env.STRIPE_PRICE_STARTER || undefined,
   pro: process.env.STRIPE_PRICE_PRO || undefined,
   business: process.env.STRIPE_PRICE_BUSINESS || undefined,
+  premium: process.env.STRIPE_PRICE_PREMIUM || undefined,
 });
 
 /**
  * Applique un événement Stripe DÉJÀ vérifié (signature). Idempotent (stripe_events.id) et ordonné
  * (un événement plus ancien que le dernier appliqué à l'organisation est ignoré).
- * En cas d'erreur, la trace d'idempotence est retirée pour que Stripe puisse rejouer l'événement.
+ * En cas d'erreur, la trace est retirée (Stripe rejoue) ; si le processus plante avant, la ligne reste « processing » et est reprise après 5 min.
  */
 export async function processStripeEvent(event: Stripe.Event): Promise<ProcessResult> {
   const admin = createAdminClient();
   const created = new Date(event.created * 1000).toISOString();
-  const ins = await admin.from("stripe_events").insert({ id: event.id, type: event.type, event_created: created });
+  const ins = await admin.from("stripe_events").insert({ id: event.id, type: event.type, event_created: created, status: "processing", processing_at: new Date().toISOString() });
   if (ins.error) {
-    if (ins.error.code === "23505") return { result: "duplicate" };
-    throw new Error("stripe_events");
+    if (ins.error.code !== "23505") throw new Error("stripe_events");
+    // Doublon : seul un événement resté « processing » depuis > 5 min (plantage en cours de traitement) est repris, atomiquement
+    // (un seul rejeu gagne l'UPDATE conditionnel) ; un événement traité ou en cours récent reste un doublon.
+    const stale = new Date(Date.now() - STUCK_AFTER_MS).toISOString();
+    const re = await admin.from("stripe_events").update({ processing_at: new Date().toISOString() }).eq("id", event.id).eq("status", "processing").lt("processing_at", stale).select("id");
+    if (re.error) throw new Error("stripe_events");
+    if (!re.data?.length) return { result: "duplicate" };
   }
   const finish = async (status: "processed" | "ignored", detail: string | null, orgId?: string) => {
-    await admin.from("stripe_events").update({ status, detail, org_id: orgId ?? null }).eq("id", event.id);
+    await admin.from("stripe_events").update({ status, detail, org_id: orgId ?? null, processed_at: new Date().toISOString() }).eq("id", event.id);
   };
   try {
     const mapped = mapStripeEvent(event, priceIdsFromEnv());
     if (!mapped) { await finish("ignored", "unhandled_or_unknown_plan"); return { result: "ignored", reason: "unhandled" }; }
 
     // Organisation : métadonnées posées par l'application, sinon client Stripe déjà lié ; jamais une valeur brute non vérifiée.
-    const cols = "id, subscription_status, past_due_since, stripe_subscription_id, stripe_customer_id, stripe_event_at, seat_limit, name";
+    const cols = "id, subscription_status, past_due_since, stripe_subscription_id, stripe_customer_id, stripe_event_at, seat_limit, name, plan, premium_since, cancel_at_period_end";
     let org = mapped.orgId ? (await admin.from("organizations").select(cols).eq("id", mapped.orgId).maybeSingle()).data : null;
     if (!org && mapped.customerId) org = (await admin.from("organizations").select(cols).eq("stripe_customer_id", mapped.customerId).maybeSingle()).data;
     if (!org) { await finish("ignored", "org_not_found"); return { result: "ignored", reason: "org_not_found" }; }
@@ -50,12 +61,16 @@ export async function processStripeEvent(event: Stripe.Event): Promise<ProcessRe
     if (org.stripe_event_at && new Date(created) < new Date(org.stripe_event_at)) return reject("out_of_order");
     if (!subscriptionCoherent(mapped, org.stripe_subscription_id, event.type)) return reject("other_subscription");
 
-    const patch = mapped.patch({ subscription_status: org.subscription_status, past_due_since: org.past_due_since, stripe_subscription_id: org.stripe_subscription_id, stripe_customer_id: org.stripe_customer_id });
+    const patch = mapped.patch({ subscription_status: org.subscription_status, past_due_since: org.past_due_since, stripe_subscription_id: org.stripe_subscription_id, stripe_customer_id: org.stripe_customer_id, plan: org.plan, premium_since: org.premium_since });
     if (patch && Object.keys(patch).length) {
       const { error } = await admin.from("organizations").update({ ...patch, stripe_event_at: created }).eq("id", org.id);
       if (error) throw new Error("org_update");
     }
+    // Suivi de conversion (jamais bloquant) : essai démarré / abonnement actif.
+    if (patch?.subscription_status === "trialing") await trackFunnel("trial_started", { orgId: org.id, plan: patch.plan ?? org.plan });
+    else if (patch?.subscription_status === "active") await trackFunnel("subscription_active", { orgId: org.id, plan: patch?.plan ?? org.plan });
     await notify(mapped, org.id, patch?.seat_limit);
+    await sendBillingMails(mapped, org, patch); // e-mail aux administrateurs ; ne lève jamais
     invalidateEntitlement(org.id);
     dashboardCache.clear();
     await finish("processed", null, org.id);

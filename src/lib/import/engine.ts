@@ -17,6 +17,7 @@ export interface ExistingIndex {
 export interface InsertRow {
   status_id: string;
   source_id: string | null;
+  call_domain_id?: string | null;
   assigned_to: string | null;
   first_name: string;
   last_name: string;
@@ -33,6 +34,8 @@ export interface ImportStore {
   initialStatusId(): Promise<string>;
   sourcesByName(): Promise<Map<string, string>>; // nom en minuscules -> id
   validSourceId(id: string): Promise<boolean>;
+  /** Domaines d'activité actifs, nom en minuscules -> id (facultatif). */
+  domainsByName?(): Promise<Map<string, string>>;
   activeMembers(roleId?: string): Promise<string[]>;
   lastAssigned(userIds: string[]): Promise<Record<string, string | null>>;
   findExisting(emails: string[], phones: string[]): Promise<ExistingIndex>;
@@ -48,6 +51,7 @@ export interface PlanRow {
   lead?: ParsedLead;
   existingId?: string;
   sourceId?: string | null;
+  domainId?: string | null;
   assignedTo?: string | null;
   mergeInto?: number; // index d'une ligne du plan créée plus tôt dans le fichier (doublon interne)
 }
@@ -76,6 +80,7 @@ export async function analyze(
     return { plan: [], issues: [{ line: 1, column: "—", reason: "Source par défaut invalide." }], counts: { total: rows.length, created: 0, updated: 0, skipped: 0, failed: rows.length } };
   }
 
+  const domains = (await store.domainsByName?.()) ?? new Map<string, string>();
   const valid: { i: number; lead: ParsedLead; sourceId: string | null }[] = [];
   rows.forEach((row, idx) => {
     const line = idx + 2;
@@ -86,11 +91,16 @@ export async function analyze(
       if (id) sourceId = id;
       else rowIssues.push({ line, column: headers.find((h) => mapping[h] === "source") ?? "source", reason: `Source inconnue : « ${lead.source_name} ».` });
     }
+    let domainId: string | null = null;
+    if (lead?.domain_name) {
+      domainId = domains.get(lead.domain_name.toLowerCase()) ?? null;
+      if (!domainId) rowIssues.push({ line, column: headers.find((h) => mapping[h] === "domain") ?? "domain", reason: `Domaine inconnu : « ${lead.domain_name} ».` });
+    }
     if (rowIssues.length || !lead) {
       issues.push(...rowIssues);
       plan.push({ line, action: "error" });
     } else {
-      plan.push({ line, action: "create", lead, sourceId });
+      plan.push({ line, action: "create", lead, sourceId, domainId });
       valid.push({ i: plan.length - 1, lead, sourceId });
     }
   });
@@ -159,7 +169,7 @@ export async function execute(store: ImportStore, analysis: Analysis): Promise<{
 
   const toInsert = analysis.plan.filter((r) => r.action === "create" && r.lead);
   const toRow = (r: PlanRow): InsertRow => ({
-    status_id: statusId, source_id: r.sourceId ?? null, assigned_to: r.assignedTo ?? null,
+    status_id: statusId, source_id: r.sourceId ?? null, call_domain_id: r.domainId ?? null, assigned_to: r.assignedTo ?? null,
     first_name: r.lead!.first_name, last_name: r.lead!.last_name, company: r.lead!.company, email: r.lead!.email, phone: r.lead!.phone,
     address: r.lead!.address, city: r.lead!.city, postal_code: r.lead!.postal_code, value: r.lead!.value, custom: r.lead!.custom,
   });
@@ -196,6 +206,7 @@ export async function execute(store: ImportStore, analysis: Analysis): Promise<{
       if (v !== null && v !== "") patch[k] = v;
     }
     if (r.sourceId) patch.source_id = r.sourceId;
+    if (r.domainId) patch.call_domain_id = r.domainId;
     try {
       await store.updateLead(id, patch, l.custom);
       updated++;

@@ -70,3 +70,19 @@ export function can(perms: readonly string[], perm: Permission, isAdmin = false)
 export function canAny(perms: readonly string[], wanted: readonly Permission[], isAdmin = false): boolean {
   return isAdmin || wanted.some((p) => perms.includes(p));
 }
+
+/**
+ * Rôle « terrain » : celui qui se déplace chez les clients (commercial). Seuls ces rôles ont une zone d'intervention,
+ * des horaires de tournée et reçoivent des rendez-vous à répartir. Ni les administrateurs, ni les prospecteurs
+ * (qui créent / importent des leads), ni les confirmateurs (qui gèrent tous les rendez-vous) ne se déplacent.
+ */
+export function isFieldRole(role: { is_admin: boolean; is_field: boolean; permissions: readonly string[] }): boolean {
+  // Drapeau explicite `roles.is_field` (miroir de public.is_field_role) : plus déduit des permissions, donc un commercial
+  // à qui l'on accorde leads.create garde sa zone. Un rôle admin n'est jamais terrain.
+  return !role.is_admin && role.is_field === true;
+}
+
+/** Ancienne règle déduite des permissions : sert uniquement au backfill de la migration (et à pré-cocher la case). */
+export function legacyFieldRule(permissions: readonly string[]): boolean {
+  return permissions.includes("appointments.manage_own") && !permissions.includes("appointments.manage_all") && !permissions.includes("leads.create");
+}

@@ -1,0 +1,10 @@
+/* Carte de la répartition : tuiles OSM assombries en thème sombre (défaut), normales en thème clair. */
+.dispatch-leaflet { background: #0b0f1a; z-index: 0; }
+.dispatch-leaflet .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.7); }
+.light .dispatch-leaflet, [data-theme="light"] .dispatch-leaflet { background: #e5e7eb; }
+.light .dispatch-leaflet .leaflet-tile-pane, [data-theme="light"] .dispatch-leaflet .leaflet-tile-pane { filter: none; }
+.dispatch-leaflet .leaflet-control-attribution { font-size: 10px; }
+.dispatch-pin { display: flex; align-items: center; justify-content: center; border-radius: 9999px; color: #fff; font: 700 13px/1 system-ui, sans-serif; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.6); transition: transform .12s; }
+.dispatch-pin.is-existing { background: #6b7280 !important; opacity: .9; }
+.dispatch-pin.is-selected { transform: scale(1.35); box-shadow: 0 0 0 3px rgba(255,255,255,.55), 0 2px 6px rgba(0,0,0,.7); }
+.dispatch-base { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: #111827; color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.6); }

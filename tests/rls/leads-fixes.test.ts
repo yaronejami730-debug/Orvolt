@@ -143,6 +143,7 @@ describe("rattrapage des actions manquées (changement de statut hors RPC)", () 
     expect((await users.a!.client.from("leads").update({ status_id: st["RDV pris"] }).eq("id", id)).error).toBeNull();
     const tasks = async () => (await admin.from("tasks").select("id").eq("lead_id", id)).data!.length;
     expect(await tasks()).toBe(0);
+    await new Promise((r) => setTimeout(r, 1000)); // l'horloge de la base peut avancer sur celle de l'hôte (VM Docker)
     expect(await runMissedActions(org, "fx", { force: true })).toBeGreaterThan(0);
     expect(await tasks()).toBe(1);
     await runMissedActions(org, "fx", { force: true });

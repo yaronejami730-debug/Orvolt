@@ -5,6 +5,7 @@ import { dashboardCache, scopeKey } from "@/lib/dashboard/cache";
 import { PeriodError, resolvePeriod } from "@/lib/dashboard/period";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { allow } from "@/lib/rate-limit-server";
+import { featureError } from "@/lib/billing/feature-guard";
 import { createClient } from "@/lib/supabase/server";
 import { requireSession, sessionCan } from "@/lib/session";
 import { dashParamsSchema } from "@/lib/validation/dashboard";
@@ -28,6 +29,8 @@ const num = (v: unknown) => Number(v ?? 0);
 async function prepare(input: unknown) {
   const s = await requireSession();
   if (!sessionCan(s, "dashboard.view")) return { error: "Permission insuffisante." } as const;
+  const locked = await featureError(s.org.id, "analytics");
+  if (locked) return { error: locked } as const;
   if (!(await allow("dashboard", s.user.id, { limit: 150, windowMs: 60_000 }))) return { error: RATE_LIMIT_MESSAGE } as const;
   // Entrée bornée avant analyse : objet plat de quelques clés (les champs inconnus sont ignorés par Zod, jamais utilisés en clé de cache).
   if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length > 12) return { error: "Paramètres invalides." } as const;

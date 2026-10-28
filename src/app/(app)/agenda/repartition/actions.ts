@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { mailAppointment } from "@/lib/notifications/appointment-mail";
 import { dashboardCache } from "@/lib/dashboard/cache";
 import { z } from "zod";
 import { guardAny, mapDbError, type ActionResult } from "@/lib/action-guard";
@@ -96,6 +98,7 @@ const RPC_ERRORS: [string, string][] = [
   ["dispatch_not_confirmed", "Un RDV n'est plus confirmé : relancez l'aperçu."],
   ["dispatch_invalid_rep", "Un commercial n'est plus actif : relancez l'aperçu."],
   ["dispatch_no_zone", "Un commercial n'a plus de zone active : relancez l'aperçu."],
+  ["dispatch_not_field", "Ce membre n'a plus un rôle terrain (commercial) : relancez l'aperçu."],
   ["dispatch_no_geocode", "Un RDV n'a pas de coordonnées : relancez l'aperçu."],
   ["dispatch_route_unknown", "Itinéraire inconnu : relancez l'aperçu."],
   ["dispatch_unavailable", "Un commercial est indisponible sur un créneau : relancez l'aperçu."],
@@ -144,6 +147,12 @@ export async function applyDispatchAction(input: unknown): Promise<ActionResult<
   revalidatePath("/agenda");
   revalidatePath("/agenda/repartition");
   const r = data as { applied: number; skipped: number };
+  // Un e-mail « rendez-vous attribué » par RDV réellement posé (la simulation n'envoie rien ; jamais à soi-même ; borné).
+  if (!simulation && r.applied > 0) after(async () => { for (const it of items.slice(0, 100)) await mailAppointment("assigned", it.appointment_id, s.user.id, { userId: it.user_id }); });
+  // Deux validations simultanées de la même proposition : la seconde ne trouve plus rien à écrire (tout est déjà en place). Message clair, pas un faux « 0 RDV attribué(s) ».
+  if (r.applied === 0 && r.skipped > 0) {
+    return { ok: false, code: "stale", error: "Cette répartition vient d'être validée par un autre utilisateur : rien de plus à attribuer. Relancez la répartition pour voir la situation à jour." };
+  }
   return { ok: true, data: { applied: r.applied, skipped: r.skipped, unassigned: b.result.unassigned.length + b.result.proposed.length - fifth.length } };
 }
 

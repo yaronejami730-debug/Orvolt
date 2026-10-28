@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Columns3, Trash2, Users } from "lucide-react";
@@ -20,6 +20,7 @@ import { leadName, type LeadRow, type LeadsMeta } from "@/lib/leads/types";
 import { SORT_COLUMNS, type ListParams } from "@/lib/validation/leads";
 import { cn } from "@/lib/utils";
 import { dateFr, eur } from "./format";
+import { cursorOf, type Cursor } from "@/lib/leads/keyset";
 import { hasFilters } from "./ui-params";
 
 type Sort = (typeof SORT_COLUMNS)[number];
@@ -61,7 +62,18 @@ export function LeadsTable({ meta, params, setParams, onCreate }: { meta: LeadsM
 
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
+  const capped = data?.capped ?? false;
   const pages = Math.max(1, Math.ceil(total / params.pageSize));
+  // Curseurs de pagination par clé : page -> curseur de départ (mémorisés pendant la navigation, remis à zéro si filtres/tri changent).
+  const cursors = useRef<{ sig: string; byPage: Map<number, Cursor | undefined> }>({ sig: "", byPage: new Map() });
+  const sig = JSON.stringify({ ...params, page: 0, cursor: undefined });
+  if (cursors.current.sig !== sig) cursors.current = { sig, byPage: new Map([[1, undefined]]) };
+  if (data) cursors.current.byPage.set(params.page, params.cursor);
+  const goTo = (page: number) => {
+    const last = data?.rows[data.rows.length - 1];
+    const cursor = page === params.page + 1 && last ? cursorOf(last as unknown as Record<string, unknown>, params.sort) ?? undefined : cursors.current.byPage.get(page);
+    setParams({ ...params, page, cursor });
+  };
   const status = (id: string) => meta.statuses.find((s) => s.id === id);
   const allSelected = rows.length > 0 && rows.every((r) => selected.includes(r.id));
   const extra = useMemo(() => meta.fields.filter((f) => cols.includes(f.key) && f.type !== "file"), [meta.fields, cols]);
@@ -161,14 +173,14 @@ export function LeadsTable({ meta, params, setParams, onCreate }: { meta: LeadsM
         </TableBody>
       </Table>
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-        <span className="text-muted-foreground" data-testid="total">{total} lead{total > 1 ? "s" : ""}</span>
+        <span className="text-muted-foreground" data-testid="total">{capped ? `${total.toLocaleString("fr-FR")}+ leads` : `${total} lead${total > 1 ? "s" : ""}`}</span>
         <div className="flex items-center gap-2">
           <Select aria-label="Lignes par page" value={params.pageSize} onChange={(e) => setParams({ ...params, pageSize: Number(e.target.value) as 25 | 50 | 100, page: 1 })} className="h-9 w-24">
             {[25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}
           </Select>
-          <Button size="icon" variant="outline" aria-label="Page précédente" disabled={params.page <= 1} onClick={() => setParams({ ...params, page: params.page - 1 })}><ChevronLeft className="size-4" /></Button>
-          <span className="tabular-nums">{params.page} / {pages}</span>
-          <Button size="icon" variant="outline" aria-label="Page suivante" disabled={params.page >= pages} onClick={() => setParams({ ...params, page: params.page + 1 })}><ChevronRight className="size-4" /></Button>
+          <Button size="icon" variant="outline" aria-label="Page précédente" disabled={params.page <= 1} onClick={() => goTo(params.page - 1)}><ChevronLeft className="size-4" /></Button>
+          <span className="tabular-nums">{capped ? `${params.page} / ${pages}+` : `${params.page} / ${pages}`}</span>
+          <Button size="icon" variant="outline" aria-label="Page suivante" disabled={!(data?.hasMore ?? params.page < pages)} onClick={() => goTo(params.page + 1)}><ChevronRight className="size-4" /></Button>
         </div>
       </div>
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>

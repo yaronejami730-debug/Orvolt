@@ -27,6 +27,7 @@ import { AppointmentsTab } from "@/components/agenda/appointments-tab";
 import type { ApptRow } from "@/app/(app)/agenda/actions";
 import { ago, dateFr, eur } from "./format";
 import { CustomFieldInput } from "./lead-form";
+import { ScriptRunner, type LeadScript, type ScriptRun } from "./script-runner";
 
 export interface DetailData {
   lead: LeadRow;
@@ -35,6 +36,10 @@ export interface DetailData {
   calls: { id: string; caller_id: string; outcome: string; duration_seconds: number; notes: string | null; called_at: string }[];
   files: { id: string; name: string; size_bytes: number; mime_type: string; created_at: string }[];
   appts: ApptRow[];
+  /** Formulaires d'appel applicables au membre pour ce lead (le premier = par défaut), saisies précédentes, domaines. */
+  scripts: LeadScript[];
+  runs: ScriptRun[];
+  domains: { id: string; name: string; active: boolean }[];
 }
 
 type Saver = (value: string | string[]) => Promise<{ ok: boolean; error?: string }>;
@@ -92,6 +97,7 @@ const EVENT_LABEL = (e: DetailData["events"][number], meta: LeadsMeta): string =
     case "assigned": return e.payload.to ? `Assigné à ${who(e.payload.to)}` : "Assignation retirée";
     case "note": return "Note ajoutée";
     case "call": return `Appel journalisé (${OUTCOME_LABEL[String(e.payload.outcome)] ?? "—"})`;
+    case "script": return `Formulaire rempli : ${String(e.payload.script_name ?? "")}${e.payload.domain_name ? ` (${String(e.payload.domain_name)})` : ""}`;
     case "file": return `Fichier ajouté : ${String(e.payload.name ?? "")}`;
     case "field_changed": {
       const native = ((e.payload.native as string[] | undefined) ?? []).map((k) => NATIVE_LABEL[k] ?? k);
@@ -113,7 +119,8 @@ export function LeadDetail({ meta, data }: { meta: LeadsMeta; data: DetailData }
   const { lead } = data;
   const [pending, start] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [tab, setTab] = useState("history");
+  const [tab, setTab] = useState(data.scripts.length > 0 ? "script" : "history"); // le formulaire applicable s'ouvre directement
+  const [openNewAppt, setOpenNewAppt] = useState(false); // « Nouveau RDV » (en-tête) ouvre directement le formulaire
   const refresh = () => router.refresh();
   const ctx = { roleId: meta.roleId, isAdmin: meta.isAdmin };
   const member = (id: string | null) => meta.members.find((m) => m.id === id)?.name ?? "—";
@@ -141,7 +148,7 @@ export function LeadDetail({ meta, data }: { meta: LeadsMeta; data: DetailData }
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {lead.phone && <Button asChild variant="outline" size="sm"><a href={`tel:${lead.phone}`}><Phone className="size-4" /> Appeler</a></Button>}
             {lead.email && <Button asChild variant="outline" size="sm"><a href={`mailto:${lead.email}`}><Mail className="size-4" /> E-mail</a></Button>}
-            {meta.can.appointments && <Button variant="outline" size="sm" onClick={() => setTab("appointments")}><CalendarPlus className="size-4" /> Nouveau RDV</Button>}
+            {meta.can.appointments && <Button variant="outline" size="sm" onClick={() => { setTab("appointments"); setOpenNewAppt(true); }}><CalendarPlus className="size-4" /> Nouveau RDV</Button>}
             {meta.can.delete && <Button variant="ghost" size="sm" aria-label="Supprimer le lead" onClick={() => setConfirmDelete(true)}><Trash2 className="size-4" /></Button>}
           </div>
         </div>
@@ -192,6 +199,18 @@ export function LeadDetail({ meta, data }: { meta: LeadsMeta; data: DetailData }
                 </Select>
               </dd>
             </div>
+            {data.domains.length > 0 && (
+              <div className="space-y-1">
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Domaine</dt>
+                <dd>
+                  <Select aria-label="Domaine du lead" value={lead.call_domain_id ?? ""} disabled={!meta.can.edit} className="h-9"
+                    onChange={(e) => start(async () => { const r = await updateLeadAction({ id: lead.id, core: { callDomainId: e.target.value || null } }); if (!r.ok) toast.error(r.error); refresh(); })}>
+                    <option value="">—</option>
+                    {data.domains.filter((d) => d.active || d.id === lead.call_domain_id).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </Select>
+                </dd>
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">Créé {ago(lead.created_at)}</p>
           </dl>
           {meta.fields.length > 0 && (
@@ -213,18 +232,20 @@ export function LeadDetail({ meta, data }: { meta: LeadsMeta; data: DetailData }
 
         <Tabs value={tab} onValueChange={setTab} className="min-w-0">
           <TabsList className="max-w-full overflow-x-auto">
+            <TabsTrigger value="script">Formulaire</TabsTrigger>
             <TabsTrigger value="history">Historique</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
             <TabsTrigger value="calls">Appels</TabsTrigger>
             <TabsTrigger value="appointments">RDV</TabsTrigger>
             <TabsTrigger value="files">Fichiers</TabsTrigger>
           </TabsList>
+          <TabsContent value="script"><ScriptRunner key={`${lead.call_domain_id ?? ""}`} leadId={lead.id} scripts={data.scripts} runs={data.runs} canEdit={meta.can.edit} members={meta.members} /></TabsContent>
           <TabsContent value="history"><History data={data} meta={meta} /></TabsContent>
           <TabsContent value="notes"><Notes data={data} meta={meta} onChange={refresh} /></TabsContent>
           <TabsContent value="calls"><Calls data={data} meta={meta} onChange={refresh} /></TabsContent>
           <TabsContent value="appointments">
             {meta.can.appointments ? (
-              <AppointmentsTab appts={data.appts} members={meta.members} userId={meta.userId} canAssignOthers={meta.can.appointments === "all"} canManage
+              <AppointmentsTab openNew={openNewAppt} onOpened={() => setOpenNewAppt(false)} appts={data.appts} members={meta.members} userId={meta.userId} canAssignOthers={meta.can.appointments === "all"} canManage
                 lead={{ id: lead.id, label: leadName(lead), address: [lead.address, lead.postal_code, lead.city].filter(Boolean).join(", "), assignedTo: lead.assigned_to }} />
             ) : <EmptyState title="Rendez-vous" description="Vous n'avez pas accès à l'agenda." />}
           </TabsContent>

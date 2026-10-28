@@ -9,16 +9,19 @@ import { leadName } from "@/lib/leads/types";
 import { resolveMatrix } from "@/lib/routing/service";
 import { createClient } from "@/lib/supabase/server";
 
+/** Fenêtre de « Ma tournée » : couvre les 5 jours de la fenêtre de répartition et le rééquilibrage (jusqu'à +4 j), avec marge. */
+export const TOUR_DAYS = 7;
+
 const dayLabel = (d: string) => new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
 
-/** Tournée du commercial (aujourd'hui + 2 jours) : durées et distances routières réelles, itinéraire Google Maps / Waze. */
+/** Tournée du commercial (aujourd'hui + 6 jours : toute la fenêtre de répartition, rééquilibrage compris) : durées et distances routières réelles, itinéraire Google Maps / Waze. */
 export async function MyTour({ orgId, userId }: { orgId: string; userId: string }) {
   const supabase = await createClient();
   const from = new Date(Date.now() - 6 * 3_600_000);
   const { data } = await supabase.from("appointments")
     .select("id, starts_at, ends_at, location_address, lat, lng, issue_message, lead:leads(first_name, last_name, company)")
     .eq("org_id", orgId).eq("assigned_to", userId).eq("dispatch_status", "assigned").neq("status", "cancelled")
-    .gte("starts_at", from.toISOString()).lt("starts_at", new Date(Date.now() + 3 * 86_400_000).toISOString()).order("starts_at").limit(30);
+    .gte("starts_at", from.toISOString()).lt("starts_at", new Date(Date.now() + TOUR_DAYS * 86_400_000).toISOString()).order("starts_at").limit(40);
   const { data: zone } = await supabase.from("sales_zones").select("base_lat, base_lng, travel_margin_min").eq("org_id", orgId).eq("user_id", userId).maybeSingle();
   const rows = (data ?? []) as unknown as { id: string; starts_at: string; ends_at: string; location_address: string | null; lat: number | null; lng: number | null; issue_message: string | null; lead: { first_name: string; last_name: string; company: string | null } | null }[];
   if (rows.length === 0 || !zone) return null;

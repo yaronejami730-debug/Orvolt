@@ -50,7 +50,7 @@ export default function DesignPage() {
     <main className="mx-auto max-w-5xl space-y-12 px-4 py-8 sm:px-8 sm:py-12">
       <PageHeader
         title="Design system"
-        description="Composants LeadForge : sombre par défaut, clair en option."
+        description="Composants Orvolt : sombre par défaut, clair en option."
         actions={
           <>
             <ThemeToggle />

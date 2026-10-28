@@ -19,12 +19,14 @@ export const leadCoreSchema = z.object({
   postalCode: optText(12),
   value: z.number("Valeur invalide.").min(0, "Valeur invalide.").max(1e9).optional().nullable(),
   sourceId: z.uuid().optional().nullable(),
+  /** Domaine d'activité (pompe à chaleur, photovoltaïque…) : oriente le formulaire d'appel. */
+  callDomainId: z.uuid().optional().nullable(),
   assignedTo: z.uuid().optional().nullable(),
   statusId: z.uuid().optional().nullable(),
 });
 
 export const createLeadSchema = leadCoreSchema
-  .extend({ firstName: z.string().trim().max(80, "Prénom trop long.").default(""), lastName: z.string().trim().max(80, "Nom trop long.").default(""), custom: z.record(z.string(), z.unknown()).optional() })
+  .extend({ firstName: z.string().trim().max(80, "Prénom trop long.").default(""), lastName: z.string().trim().max(80, "Nom trop long.").default(""), custom: z.record(z.string(), z.unknown()).optional(), /** « Créer quand même » après l'avertissement de doublon. */ allowDuplicate: z.boolean().optional() })
   .refine((l) => !!(l.firstName || l.lastName || l.company), { message: "Indiquez au moins un nom ou une société.", path: ["lastName"] });
 
 export const updateLeadSchema = z.object({
@@ -49,6 +51,8 @@ export const listParamsSchema = z.object({
   sort: z.enum(SORT_COLUMNS).default("created_at"),
   dir: z.enum(["asc", "desc"]).default("desc"),
   page: z.number().int().min(1).max(10000).default(1),
+  /** Curseur de pagination par clé (dernière ligne de la page précédente) ; absent = OFFSET. */
+  cursor: z.object({ v: z.string().max(200), id: z.uuid() }).optional(),
   pageSize: z.union([z.literal(25), z.literal(50), z.literal(100)]).default(25),
 });
 export type ListParams = z.infer<typeof listParamsSchema>;
@@ -68,6 +72,8 @@ export const callSchema = z.object({
 export const idOnly = z.object({ id: z.uuid() });
 
 export const FILE_MAX_BYTES = 10 * 1024 * 1024;
+/** Pièces jointes maximum par lead (miroir du trigger SQL lead_files_cap). */
+export const MAX_FILES_PER_LEAD = 50;
 export const FILE_MIME_TYPES: Record<string, string[]> = {
   "image/png": ["png"],
   "image/jpeg": ["jpg", "jpeg"],

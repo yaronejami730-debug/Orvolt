@@ -52,9 +52,9 @@ afterAll(async () => {
 });
 
 describe("create_organization", () => {
-  it("crée 5 rôles système et un admin membre", async () => {
+  it("crée 6 rôles système et un admin membre", async () => {
     const { data: roles } = await admin.from("roles").select("name, is_admin, is_system").eq("org_id", orgA);
-    expect(roles?.map((r) => r.name).sort()).toEqual(["Administrateur", "Commercial", "Confirmateur", "Prospecteur", "Super administrateur"]);
+    expect(roles?.map((r) => r.name).sort()).toEqual(["Administrateur", "Commercial", "Confirmateur", "Membre", "Prospecteur", "Super administrateur"]);
     expect(roles?.every((r) => r.is_system)).toBe(true);
     expect(roles?.filter((r) => r.is_admin)).toHaveLength(1);
     const { data: m } = await admin.from("memberships").select("user_id").eq("org_id", orgA).eq("user_id", users.a!.id);
@@ -120,7 +120,7 @@ describe("isolation A / B : écriture", () => {
     const { data: org } = await admin.from("organizations").select("name").eq("id", orgB).single();
     expect(org?.name).toBe(`Org B ${run}`);
     expect((await admin.from("memberships").select("id").eq("org_id", orgB)).data).toHaveLength(1);
-    expect((await admin.from("roles").select("id").eq("org_id", orgB)).data).toHaveLength(5);
+    expect((await admin.from("roles").select("id").eq("org_id", orgB)).data).toHaveLength(6);
     const { data: prof } = await admin.from("profiles").select("full_name").eq("id", users.b!.id).single();
     expect(prof?.full_name).toBe("User b");
   });

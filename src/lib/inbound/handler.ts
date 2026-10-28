@@ -5,7 +5,7 @@ import { dashboardCache } from "@/lib/dashboard/cache";
 import { runStatusActions } from "@/lib/automation/store";
 import { validateCustom } from "@/lib/custom-fields";
 import { normalizeEmail, normalizePhone, maskPii } from "@/lib/leads/normalize";
-import { limiter } from "@/lib/rate-limit";
+import { serverLimiter as limiter } from "@/lib/rate-limit-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { adapt, finalizeInbound, googleKeyOf, mappingConfigSchema, type InboundKind } from "./adapters";
 import { decryptSecret, deriveEndpointSecret, ipHash, ipSalt, verifyBodySignature, verifyMetaSignature, verifySecret } from "./auth";
@@ -134,9 +134,10 @@ export async function processInbound(req: InboundRequest): Promise<InboundRespon
   if (!req.trusted) {
     let ok = false;
     if (ep.kind === "meta") {
-      // Meta : si un secret d'application est configuré, la signature X-Hub-Signature-256 est OBLIGATOIRE ; sinon jeton d'URL seul.
-      const appSecret = ep.meta_app_secret_enc ? decryptSecret(ep.meta_app_secret_enc) : null;
-      ok = ep.meta_app_secret_enc ? !!appSecret && verifyMetaSignature(req.headers.get("x-hub-signature-256"), appSecret, body) : true;
+      // Meta : signature X-Hub-Signature-256 OBLIGATOIRE (comparaison en temps constant). Sans secret d'application configuré : rejet.
+      let appSecret: string | null = null;
+      try { appSecret = ep.meta_app_secret_enc ? decryptSecret(ep.meta_app_secret_enc) : null; } catch { appSecret = null; }
+      ok = !!appSecret && verifyMetaSignature(req.headers.get("x-hub-signature-256"), appSecret, body);
     } else if (ep.kind === "google") {
       ok = verifySecret(googleKeyOf(parsed), ep.secret_hash);
     } else {

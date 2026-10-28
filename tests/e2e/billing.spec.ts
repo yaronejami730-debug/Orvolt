@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
 import Stripe from "stripe";
-import { fillEnergyRequired } from "./helpers";
+import { fillEnergyRequired, signupViaForm } from "./helpers";
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
 config({ path: ".env.local", quiet: true });
@@ -30,24 +30,19 @@ test.afterAll(async () => {
   for (const u of data?.users ?? []) if (u.email?.endsWith(`-${run}@e2e.test`)) await a.auth.admin.deleteUser(u.id);
 });
 
-test("page tarifs publique : 3 plans et accès à l'inscription", async ({ page }) => {
+test("page tarifs publique : 4 plans et accès à l'inscription", async ({ page }) => {
   await page.goto("/pricing");
-  for (const [price, seats] of [["9,90", "Jusqu'à 3 utilisateurs"], ["79", "Jusqu'à 10 utilisateurs"], ["199", "Utilisateurs illimités"]] as const) {
+  for (const [price, seats] of [["9,99", "Jusqu'à 3 utilisateurs"], ["39", "Jusqu'à 8 utilisateurs"], ["79,99", "Jusqu'à 20 utilisateurs"], ["199", "Utilisateurs illimités"]] as const) {
     await expect(page.getByText(seats).first()).toBeVisible();
     await expect(page.getByText(price).first()).toBeVisible();
   }
-  await expect(page.locator('a[href="/signup"]').first()).toBeVisible();
+  await expect(page.locator('a[href^="/signup"]').first()).toBeVisible();
 });
 
 test("abonnement : essai -> Checkout simulé -> webhooks signés -> actif ; échec de paiement ; annulation en lecture seule", async ({ page, request }) => {
-  await page.goto("/signup");
-  await page.getByLabel("Votre nom").fill(owner.name);
-  await page.getByLabel("Nom de l'entreprise").fill(owner.org);
-  await page.getByLabel("E-mail").fill(owner.email);
-  await page.getByLabel("Mot de passe").fill(owner.password);
-  await page.getByTestId("template-energie").click();
-  await page.getByRole("button", { name: "Créer mon espace" }).click();
-  await expect(page).toHaveURL(/\/onboarding/);
+  // Inscription en un seul écran (activité comprise) : le code part au blur de l'e-mail, aucun écran d'activité ensuite.
+  await signupViaForm(page, { first: "Test", last: owner.name, email: owner.email, password: owner.password, org: owner.org, phone: "0612345678" });
+  await expect(page).toHaveURL(/\/onboarding$/);
   const db = admin();
   const orgId = (await db.from("organizations").select("id").eq("name", owner.org).single()).data!.id as string;
 

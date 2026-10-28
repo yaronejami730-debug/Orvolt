@@ -1,19 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { createMemberSchema, loginSchema, roleSchema, signupSchema } from "@/lib/validation/auth";
 
-const valid = { fullName: "Ada Lovelace", email: " ADA@Example.com ", password: "motdepasse1", orgName: "Solaire SARL", template: "energie" };
+const valid = { firstName: "Ada", lastName: "Lovelace", email: " ADA@Example.com ", password: "motdepasse1", orgName: "Solaire SARL", siret: "732 829 320 00074", phone: "06 12 34 56 78", orgType: "installer", template: "energie" };
 
 describe("signupSchema", () => {
   it("accepte une saisie valide et normalise l'e-mail", () => {
     const r = signupSchema.safeParse(valid);
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.email).toBe("ada@example.com");
+    if (r.success) { expect(r.data.email).toBe("ada@example.com"); expect(r.data.siret).toBe("73282932000074"); }
+  });
+  it("le métier n'est plus demandé : énergie par défaut", () => {
+    const r = signupSchema.safeParse(valid);
+    expect(r.success && r.data.template).toBe("energie");
   });
   it("refuse e-mail invalide, mot de passe court, template inconnu", () => {
     expect(signupSchema.safeParse({ ...valid, email: "pas-un-mail" }).success).toBe(false);
     expect(signupSchema.safeParse({ ...valid, password: "court" }).success).toBe(false);
     expect(signupSchema.safeParse({ ...valid, template: "inconnu" }).success).toBe(false);
+    expect(signupSchema.safeParse({ ...valid, lastName: "" }).success).toBe(false);
     expect(signupSchema.safeParse({ ...valid, orgName: "A" }).success).toBe(false);
+    expect(signupSchema.safeParse({ ...valid, siret: "12345678901234" }).success).toBe(false);
+    expect(signupSchema.safeParse({ ...valid, phone: "abc" }).success).toBe(false);
   });
 });
 
@@ -26,7 +33,7 @@ describe("loginSchema", () => {
 
 describe("createMemberSchema / roleSchema", () => {
   it("valide le rôle en uuid", () => {
-    const base = { fullName: "Jean Dupont", email: "j@d.fr", password: "motdepasse1" };
+    const base = { fullName: "Jean Dupont", email: "j@d.fr" };
     expect(createMemberSchema.safeParse({ ...base, roleId: "nope" }).success).toBe(false);
     expect(createMemberSchema.safeParse({ ...base, roleId: crypto.randomUUID() }).success).toBe(true);
   });

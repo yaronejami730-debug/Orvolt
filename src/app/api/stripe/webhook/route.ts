@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { processStripeEvent } from "@/lib/billing/process";
 import { webhookVerifier } from "@/lib/billing/stripe";
+import { readBodyLimited } from "@/lib/net/body";
 
 export const dynamic = "force-dynamic";
 const MAX_BYTES = 1_000_000;
@@ -17,8 +18,8 @@ export async function POST(req: NextRequest) {
   if (!signature) return NextResponse.json({ error: "invalid_signature" }, { status: 400 });
   const len = Number(req.headers.get("content-length") ?? "0");
   if (Number.isFinite(len) && len > MAX_BYTES) return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
-  const raw = await req.text();
-  if (raw.length > MAX_BYTES) return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
+  const raw = await readBodyLimited(req.body, MAX_BYTES); // lecture bornée (Content-Length falsifiable)
+  if (raw === null) return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
   let event;
   try {
     event = webhookVerifier().webhooks.constructEvent(raw, signature, secret, TOLERANCE_SECONDS);

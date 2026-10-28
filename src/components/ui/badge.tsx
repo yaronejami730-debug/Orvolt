@@ -1,14 +1,17 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-type Tone = "neutral" | "accent" | "success" | "warning" | "destructive";
+type Tone = "neutral" | "accent" | "success" | "warning" | "destructive" | "info" | "dark";
 
+/* Tags GoCardless : 12px/14px 600, padding 3px 8px, rayon 6px. */
 const tones: Record<Tone, string> = {
-  neutral: "bg-muted text-muted-foreground",
-  accent: "bg-accent-soft text-link",
-  success: "bg-success/15 text-success-text",
-  warning: "bg-warning/15 text-warning-text",
-  destructive: "bg-destructive/15 text-destructive-text",
+  neutral: "bg-muted text-secondary-text",
+  accent: "bg-accent-soft text-foreground",
+  success: "bg-success-soft text-success-text",
+  warning: "bg-warning-soft text-warning-text",
+  destructive: "bg-destructive-soft text-destructive-text",
+  info: "bg-info-soft text-info-text",
+  dark: "bg-foreground text-background text-sm leading-4 px-2 py-1",
 };
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
@@ -22,7 +25,7 @@ export function Badge({ className, tone = "neutral", color, dot, children, style
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
+        "inline-flex max-w-full items-center justify-center gap-1 whitespace-nowrap rounded-sm px-2 py-[3px] text-xs font-semibold leading-[14px]",
         !color && tones[tone],
         className,
       )}

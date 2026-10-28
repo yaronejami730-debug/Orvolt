@@ -36,13 +36,25 @@ export class MemoryStore implements RateLimitStore {
   }
 }
 
+/** Décision d'un store distant atomique (Postgres) ; null = indisponible, repli sur le store mémoire. */
+export type RemoteCheck = (key: string, rule: RateLimitRule) => Promise<RateLimitResult | null>;
+
 export class RateLimiter {
   constructor(
     private store: RateLimitStore = new MemoryStore(),
     private clock: () => number = Date.now,
+    private remote?: RemoteCheck,
   ) {}
 
   async check(key: string, rule: RateLimitRule): Promise<RateLimitResult> {
+    if (this.remote) {
+      try {
+        const r = await this.remote(key, rule);
+        if (r) return r;
+      } catch {
+        // base indisponible : repli mémoire (limite par instance, mieux que rien)
+      }
+    }
     const now = this.clock();
     const list = await this.store.hit(key, now, rule.windowMs);
     if (list.length > rule.limit) {
@@ -56,11 +68,29 @@ export class RateLimiter {
 
 export const RULES = {
   login: { limit: 10, windowMs: 15 * 60_000 },
+  /** IP inconnue (TRUSTED_PROXY absent) : clé par e-mail seul, plus tolérante pour limiter le blocage ciblé d'un compte. */
+  loginNoIp: { limit: 30, windowMs: 15 * 60_000 },
   signup: { limit: 5, windowMs: 60 * 60_000 },
   signupGlobal: { limit: 60, windowMs: 60 * 60_000 },
   sensitive: { limit: 30, windowMs: 60_000 },
+  /** Lectures (liste des leads, agenda…) : recherche en frappe et pagination rapide ne doivent pas déclencher le blocage. */
+  read: { limit: 300, windowMs: 60_000 },
+  siret: { limit: 30, windowMs: 10 * 60_000 },
+  signupCode: { limit: 5, windowMs: 60 * 60_000 },
+  signupCodeIp: { limit: 30, windowMs: 60 * 60_000 },
+  signupVerify: { limit: 15, windowMs: 15 * 60_000 },
+  passwordReset: { limit: 3, windowMs: 60 * 60_000 },
+  passwordResetIp: { limit: 20, windowMs: 60 * 60_000 },
+  passwordResetApply: { limit: 10, windowMs: 15 * 60_000 },
+  contact: { limit: 5, windowMs: 60 * 60_000 },
+  contactGlobal: { limit: 100, windowMs: 60 * 60_000 },
+  /** Pages d'acquisition /lp/* : par IP, par e-mail (empêche de saturer la boîte d'un tiers) et plafond global. */
+  landing: { limit: 5, windowMs: 60 * 60_000 },
+  landingEmail: { limit: 2, windowMs: 60 * 60_000 },
+  landingGlobal: { limit: 200, windowMs: 60 * 60_000 },
 } satisfies Record<string, RateLimitRule>;
 
+/** Limiteur de base (mémoire, par instance) : tests et développement. En production, voir rate-limit-server.ts (persistant). */
 export const limiter = new RateLimiter();
 
 export const RATE_LIMIT_MESSAGE = "Trop de tentatives. Réessayez dans quelques minutes.";

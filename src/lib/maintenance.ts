@@ -13,9 +13,9 @@ export async function purgeImportFiles(olderThanMs = 3_600_000): Promise<number>
   const { data } = await admin.from("import_jobs").select("id, file_path, status").not("file_path", "is", null).lt("created_at", cutoff).in("status", ["uploaded", "validated", "failed", "running"]).limit(500);
   const paths = (data ?? []).map((j) => j.file_path as string);
   if (paths.length) await admin.storage.from(BUCKET).remove(paths);
-  for (const j of data ?? []) {
-    await admin.from("import_jobs").update({ file_path: null, status: j.status === "done" ? "done" : "failed", finished_at: new Date().toISOString() }).eq("id", j.id);
-  }
+  // Une seule requête (au lieu d'un UPDATE par job) : ces jobs sont tous dans un statut non terminé, donc passent en « failed ».
+  const ids = (data ?? []).map((j) => j.id as string);
+  if (ids.length) await admin.from("import_jobs").update({ file_path: null, status: "failed", finished_at: new Date().toISOString() }).in("id", ids);
   return paths.length;
 }
 
@@ -32,6 +32,7 @@ export interface MaintenanceReport {
   inboundEventsDeleted: number;
   importFilesRemoved: number;
   importJobsDeleted: number;
+  housekeeping: Record<string, number>;
 }
 
 /** Tâche planifiée : rétention des événements entrants, fichiers d'import orphelins, jobs anciens. */
@@ -40,5 +41,7 @@ export async function runMaintenance(): Promise<MaintenanceReport> {
   const importFilesRemoved = await purgeImportFiles();
   const ev = await admin.rpc("purge_inbound_events", { p_days: 90, p_mask_days: 14 });
   const jobs = await admin.rpc("purge_import_jobs", { p_days: 30 });
-  return { inboundEventsDeleted: Number(ev.data ?? 0), importFilesRemoved, importJobsDeleted: Number(jobs.data ?? 0) };
+  // Rétention des journaux qui grossissent (rate_limits, stripe_events, email_verifications, notifications), par lots.
+  const hk = await admin.rpc("purge_housekeeping");
+  return { inboundEventsDeleted: Number(ev.data ?? 0), importFilesRemoved, importJobsDeleted: Number(jobs.data ?? 0), housekeeping: (hk.data ?? {}) as Record<string, number> };
 }

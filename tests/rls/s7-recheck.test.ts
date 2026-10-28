@@ -198,7 +198,7 @@ describe("sortie de lecture seule : uniquement par paiement (webhook signé), ja
     expect(r.status).toBe(200);
     const row = await admin.from("organizations").select("subscription_status, seat_limit").eq("id", A).single();
     expect(row.error).toBeNull();
-    expect(row.data).toMatchObject({ subscription_status: "active", seat_limit: 10 });
+    expect(row.data).toMatchObject({ subscription_status: "active", seat_limit: 8 });
     expect((await a.from("lead_notes").insert({ org_id: A, lead_id: fx.lead, body: "après" })).error).toBeNull();
     const u1 = await a.from("leads").update({ first_name: "Reprise" }).eq("id", fx.lead!).select("id");
     const u2 = await a.from("organizations").update({ name: `S7R A ${run} ok` }).eq("id", A).select();

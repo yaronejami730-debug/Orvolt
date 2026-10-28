@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarCheck, CheckCircle2, ExternalLink, FlaskConical, Info, MapPin, Navigation, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarCheck, CheckCircle2, FlaskConical, Info, MapPin, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   applyDispatchAction, clearSimulationAction, confirmPendingAction, launchSimulationAction, previewDispatchAction, type PreviewData,
@@ -12,12 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { fmtMin } from "@/lib/dispatch/time";
-import { googleMapsRoute, wazeTo } from "@/lib/dispatch/links";
-import { TRAFFIC_WARNING } from "@/lib/dispatch/traffic";
 import type { ToCheck } from "@/lib/dispatch/server";
 import { LocationFixDialog } from "./location-fix-dialog";
-import { DAY_COLORS, DispatchMap } from "./dispatch-map";
+import { rebalanceMessage } from "@/lib/dispatch/rebalance-message";
+import { usePollRefresh } from "@/components/use-poll-refresh";
+import { Proposal } from "./proposal";
 
 export interface PendingView {
   id: string;
@@ -29,14 +28,15 @@ export interface PendingView {
   durationMin: number;
 }
 
-const dayLabel = (d: string) => new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
 const dayShort = (d: string) => new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
 const wishLabel = (a: string, b: string) => (a === b ? dayShort(a) : `${dayShort(a)} → ${dayShort(b)}`);
 
 const SIM_URL = "/agenda/repartition?vue=simulation";
 
-export function DispatchPanel({ pending, repCount, canSimulate, hasSimulation, simulationView, truncations, toCheck, fixedCount }: { pending: PendingView[]; repCount: number; canSimulate: boolean; hasSimulation: boolean; simulationView: boolean; truncations: string[]; toCheck: ToCheck[]; fixedCount: number }) {
+export function DispatchPanel({ pending, repCount, canSimulate, hasSimulation, simulationView, truncations, toCheck, fixedCount, unavailCount = 0 }: { pending: PendingView[]; repCount: number; canSimulate: boolean; hasSimulation: boolean; simulationView: boolean; truncations: string[]; toCheck: ToCheck[]; fixedCount: number; unavailCount?: number }) {
   const router = useRouter();
+  // La liste « À confirmer » / « RDV confirmés à attribuer » vit côté serveur : on la rafraîchit toutes les 30 s (onglet visible, pas pendant un calcul).
+  usePollRefresh({ everyMs: 30_000 });
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ applied: number; unassigned: number } | null>(null);
@@ -146,7 +146,7 @@ export function DispatchPanel({ pending, repCount, canSimulate, hasSimulation, s
       {hasSimulation && <SimulationSteps hasPreview={!!preview} toCheck={toCheck.length} fixed={fixedCount} done={!!done} />}
       {fixedCount > 0 && (
         <p className="flex flex-col gap-2 rounded-md bg-accent-soft px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between" data-testid="rebalance-banner">
-          <span className="flex items-start gap-2"><Info className="mt-0.5 size-4 shrink-0 text-link" />Position corrigée sur {fixedCount} RDV : relancer la répartition. Les RDV que vous avez verrouillés ne bougent pas.</span>
+          <span className="flex items-start gap-2"><Info className="mt-0.5 size-4 shrink-0 text-link" />{rebalanceMessage(fixedCount, unavailCount)} Les RDV que vous avez verrouillés ne bougent pas.</span>
           <Button size="sm" onClick={() => run(true)} loading={busy} data-testid="rebalance-run"><Sparkles className="size-3.5" /> Rééquilibrer</Button>
         </p>
       )}
@@ -177,174 +177,6 @@ export function DispatchPanel({ pending, repCount, canSimulate, hasSimulation, s
       )}
       {preview && <Proposal data={preview} busy={busy} onApply={apply} onCancel={() => { setPreview(null); setFifth([]); }} fifth={fifth} setFifth={setFifth} />}
     </div>
-  );
-}
-
-function Proposal({ data, busy, onApply, onCancel, fifth, setFifth }: { data: PreviewData; busy: boolean; onApply: () => void; onCancel: () => void; fifth: string[]; setFifth: (ids: string[]) => void }) {
-  const { plan, reps } = data;
-  const byRep = reps.map((r) => ({ rep: r, routes: plan.stats.filter((s) => s.repId === r.id) })).filter((x) => x.routes.length > 0);
-  const total = plan.assignments.length;
-  return (
-    <section aria-label="Proposition de répartition" className="space-y-4" data-testid="proposal">
-      <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">{data.mode === "rebalance" ? "Proposition de rééquilibrage" : "Proposition de répartition"}</h2>
-          <p className="text-sm text-muted-foreground" data-testid="proposal-summary">{total} RDV proposés sur {plan.stats.length} journée(s){plan.unassigned.length > 0 ? ` · ${plan.unassigned.length} non attribué(s)` : ""}. Rien n&apos;est enregistré tant que vous n&apos;avez pas validé.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" onClick={onCancel} disabled={busy}>Annuler</Button>
-          <Button onClick={onApply} loading={busy} disabled={(total === 0 && fifth.length === 0) || data.routing.estimated} data-testid="dispatch-apply"><CheckCircle2 className="size-4" /> {data.mode === "rebalance" ? "Valider le rééquilibrage" : "Valider la répartition"}</Button>
-        </div>
-      </div>
-
-      {data.mode === "rebalance" && <RebalanceDiff data={data} />}
-      {data.truncations.length > 0 && (
-        <div role="alert" className="space-y-1 rounded-md bg-warning/15 px-3 py-2 text-xs text-warning-text" data-testid="preview-truncation">
-          {data.truncations.map((t) => <p key={t} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" />{t}</p>)}
-        </div>
-      )}
-      <RoutingBanner data={data} />
-      {byRep.map(({ rep, routes }) => (
-        <Card key={rep.id} data-testid={`rep-${rep.name}`}>
-          <CardHeader>
-            <CardTitle className="flex flex-wrap items-center gap-2">{rep.name}
-              <Badge tone="neutral">{routes.reduce((n, r) => n + r.newCount, 0)} nouveau(x) RDV</Badge>
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Base : {rep.baseAddress} · rayon {rep.radiusKm} km · {fmtMin(rep.workStartMin)}–{fmtMin(rep.workEndMin)} · norme {rep.targetPerDay}/jour · confort {rep.comfortMax} · maximum {rep.absoluteMax}</p>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-            <div className="min-w-0 space-y-2">
-              <DispatchMap rep={rep} routes={routes} />
-              <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                {routes.map((r, i) => <li key={r.day} className="flex items-center gap-1"><span className="inline-block size-2.5 rounded-full" style={{ background: DAY_COLORS[i % DAY_COLORS.length] }} />{dayShort(r.day)}</li>)}
-              </ul>
-            </div>
-            <div className="min-w-0 space-y-3">
-              {routes.map((r, i) => (
-                <div key={r.day} className="rounded-lg border p-3" data-testid={`route-${rep.name}-${r.day}`}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="flex items-center gap-2 text-sm font-semibold capitalize"><span className="inline-block size-2.5 rounded-full" style={{ background: DAY_COLORS[i % DAY_COLORS.length] }} />{dayLabel(r.day)}</h3>
-                    <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span data-testid="gauge" aria-label={`${r.count} RDV, norme ${r.target}`} className={`font-medium ${r.count > r.comfort ? "text-warning-text" : r.count > r.target ? "text-link" : "text-foreground"}`}>{r.count}/{r.target}</span>
-                      <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted" aria-hidden><span className={`block h-full rounded-full ${r.count > r.comfort ? "bg-warning" : r.count > r.target ? "bg-accent" : "bg-muted-foreground"}`} style={{ width: `${Math.min(100, (r.count / r.target) * 100)}%` }} /></span>
-                      · {r.totalKm} km · conduite ≈ {r.totalDriveMin} min · fin {fmtMin(r.endMin)}
-                    </span>
-                  </div>
-                  <RouteLinks base={rep.base} stops={r.stops} />
-                  <ol className="mt-2 space-y-1.5">
-                    {r.stops.map((s, k) => (
-                      <li key={s.id} className="flex items-start gap-2 text-sm" data-testid="stop">
-                        <span className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${s.kind === "new" ? "" : "bg-muted-foreground"}`} style={s.kind === "new" ? { background: DAY_COLORS[i % DAY_COLORS.length] } : undefined}>{k + 1}</span>
-                        <span className="min-w-0 flex-1"><span className="tabular-nums font-medium">{fmtMin(s.startMin)}–{fmtMin(s.endMin)}</span> <span className="break-words">{s.label}</span>
-                          {s.kind === "existing" && <span className="ml-1 text-xs text-muted-foreground">(déjà planifié)</span>}
-                          <span className="block text-xs text-muted-foreground" data-testid="leg">{k === 0 ? "depuis la base" : "depuis le RDV précédent"} : {s.legBaseMin} min · {s.legKm} km
-                            {s.legMin > s.legBaseMin && <span> (≈ {s.legMin} min avec circulation, {trafficNote(s.trafficSource, data)})</span>}</span>
-                          {s.note && <span className="block text-xs text-link" data-testid="load-note">{s.note}</span>}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-
-      {plan.warnings.length > 0 && (
-        <p className="flex items-start gap-2 rounded-md bg-warning/15 px-3 py-2 text-xs text-warning-text" data-testid="overload-warning"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-          Journée déjà au-delà du confort à cause de RDV posés ou verrouillés (non modifiée) : {plan.warnings.map((w) => `${reps.find((r) => r.id === w.repId)?.name ?? "—"} le ${dayShort(w.day)} (${w.count} RDV)`).join(", ")}.</p>
-      )}
-      {plan.proposed.length > 0 && (
-        <Card data-testid="fifth">
-          <CardHeader><CardTitle className="flex items-center gap-2"><AlertTriangle className="size-4 text-warning-text" />Au-delà du confort : journée chargée ({plan.proposed.length})</CardTitle>
-            <p className="text-sm text-muted-foreground">Jamais attribués automatiquement. Cochez ceux que vous acceptez : votre décision sera verrouillée.</p></CardHeader>
-          <CardContent>
-            <ul className="divide-y rounded-lg border">
-              {plan.proposed.map((a) => (
-                <li key={a.requestId} className="p-3 text-sm">
-                  <label className="flex cursor-pointer items-start gap-3">
-                    <input type="checkbox" className="mt-1 size-4 accent-[var(--accent)]" checked={fifth.includes(a.requestId)} data-testid="fifth-check"
-                      onChange={(e) => setFifth(e.target.checked ? [...fifth, a.requestId] : fifth.filter((x) => x !== a.requestId))} />
-                    <span className="min-w-0"><span className="font-medium">{data.requests[a.requestId]?.label ?? "RDV"}</span> <Badge tone="warning" className="ml-1">{a.dayCount ? `${a.dayCount}e RDV` : "Au-delà du confort"} : journée chargée</Badge>
-                      <span className="block text-xs text-muted-foreground">{reps.find((r) => r.id === a.repId)?.name} · {dayShort(a.day)} {fmtMin(a.startMin)}–{fmtMin(a.endMin)} · {a.legBaseMin} min · {a.legKm} km depuis le RDV précédent</span>
-                      <span className="block text-xs text-warning-text">{a.note}</span></span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-      {plan.unassigned.length > 0 && (
-        <Card data-testid="unassigned">
-          <CardHeader><CardTitle className="flex items-center gap-2"><AlertTriangle className="size-4 text-warning-text" />Non attribués ({plan.unassigned.length})</CardTitle></CardHeader>
-          <CardContent>
-            <ul className="divide-y rounded-lg border">
-              {plan.unassigned.map((u) => (
-                <li key={u.requestId} className="p-3 text-sm"><span className="font-medium">{u.label}</span><span className="block text-muted-foreground">{u.reason}</span></li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-    </section>
-  );
-}
-
-function trafficNote(src: "free-flow" | "peak-estimate" | "provider", data: PreviewData): string {
-  return src === "provider" ? `trafic ${data.routing.trafficLabel ?? "externe"}` : "estimation selon l'heure";
-}
-
-function RoutingBanner({ data }: { data: PreviewData }) {
-  const r = data.routing;
-  return (
-    <div className="space-y-2" data-testid="routing-banner">
-      {r.estimated && (
-        <p role="alert" className="flex items-start gap-2 rounded-md bg-destructive/15 px-3 py-2 text-sm text-destructive-text" data-testid="estimate-warning">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          {r.fellBack ? "Service de routage indisponible" : "Aucun service de routage configuré"} : durées et distances ci-dessous = estimation (vol d&apos;oiseau × 1,4), pas des itinéraires réels. Aperçu seulement : la validation automatique est désactivée.
-        </p>
-      )}
-      <p className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-        <Info className="mt-0.5 size-3.5 shrink-0" />
-        <span><strong className="text-foreground">{r.label}</strong>. Circulation : {r.trafficLabel ? `trafic ${r.trafficLabel} à l'heure de départ` : `estimation selon l'heure (pointes ×${data.traffic.morningCoef} le matin, ×${data.traffic.eveningCoef} le soir, trajets > 15 min)`}, marge de sécurité +{data.traffic.safetyPct} %. Trajet max {data.maxLegMin} min entre RDV, {data.maxBaseMin} min depuis la base.</span>
-      </p>
-      <p className="flex items-start gap-2 text-xs font-medium text-warning-text" data-testid="traffic-warning"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" />{TRAFFIC_WARNING}</p>
-    </div>
-  );
-}
-
-function RouteLinks({ base, stops }: { base: { lat: number; lng: number }; stops: { lat: number | null; lng: number | null }[] }) {
-  const pts = stops.filter((s): s is { lat: number; lng: number } => s.lat !== null && s.lng !== null);
-  const g = googleMapsRoute(base, pts);
-  if (!g) return null;
-  return (
-    <p className="mt-1 flex flex-wrap gap-3 text-xs">
-      <a href={g} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-link underline-offset-2 hover:underline" data-testid="open-route"><ExternalLink className="size-3" />Ouvrir l&apos;itinéraire (Google Maps)</a>
-      <a href={wazeTo(pts[0]!)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-link underline-offset-2 hover:underline"><Navigation className="size-3" />Waze : 1er RDV</a>
-    </p>
-  );
-}
-
-function RebalanceDiff({ data }: { data: PreviewData }) {
-  const rows = data.diff;
-  const changed = rows.filter((r) => r.changed).length;
-  return (
-    <Card data-testid="rebalance-diff">
-      <CardHeader><CardTitle>Avant / après ({changed} changement{changed > 1 ? "s" : ""})</CardTitle>
-        <p className="text-sm text-muted-foreground">Seuls les RDV à attribuer ou à rééquilibrer sont recalculés ; les RDV verrouillés et les autres RDV ne bougent pas.</p></CardHeader>
-      <CardContent>
-        <ul className="divide-y rounded-lg border">
-          {rows.map((r) => (
-            <li key={r.id} className="space-y-0.5 p-3 text-sm" data-testid="diff-row">
-              <span className="font-medium">{r.label}</span>
-              <span className="block text-xs text-muted-foreground">Avant : {r.from ? `${r.from.rep} · ${dayShort(r.from.day)} ${fmtMin(r.from.start)}` : "non attribué"}</span>
-              <span className={`block text-xs ${r.to ? (r.changed ? "text-link" : "text-muted-foreground") : "text-warning-text"}`}>Après : {r.to ? `${r.to.rep} · ${dayShort(r.to.day)} ${fmtMin(r.to.start)}${r.changed ? "" : " (inchangé)"}` : "reste tel quel (aucun créneau)"}</span>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
   );
 }
 

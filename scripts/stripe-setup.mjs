@@ -4,7 +4,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Stripe from "stripe";
-import { CURRENCY, PLAN_LIST } from "../src/lib/billing/plans.ts";
+import { CURRENCY, PLAN_LIST, YEARLY_FREE_MONTHS, extraSeatLookupKey, extraSeatPriceCents } from "../src/lib/billing/plans.ts";
+import { PREMIUM_TIERS, premiumLookupKey } from "../src/lib/billing/premium-tiers.ts";
 
 const envPath = resolve(import.meta.dirname, "..", ".env.local");
 const env = {};
@@ -26,10 +27,19 @@ async function ensureProduct(p) {
   return product.id;
 }
 
+/** Prix à créer pour un plan : un par fréquence ; le Premium en a un par palier d'ancienneté (lookup_key suffixée _tN). */
+function priceSpecs(p) {
+  const tiers = p.id === "premium" ? PREMIUM_TIERS : [{ cents: p.priceCents }];
+  return tiers.flatMap((t, i) => [
+    { interval: "month", amount: t.cents, lookupKey: premiumLookupKey(p.lookupKey, i), env: i === 0 ? "" : null },
+    { interval: "year", amount: t.cents * (12 - YEARLY_FREE_MONTHS), lookupKey: premiumLookupKey(p.lookupKeyYearly, i), env: i === 0 ? "_YEARLY" : null },
+  ]);
+}
+
 const ids = {};
 for (const p of PLAN_LIST) {
   const product = await ensureProduct(p);
-  for (const [interval, amount, lookupKey, suffix] of [["month", p.priceCents, p.lookupKey, ""], ["year", p.yearlyPriceCents, p.lookupKeyYearly, "_YEARLY"]]) {
+  for (const { interval, amount, lookupKey, env: suffix } of priceSpecs(p)) {
     const found = await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
     let price = found.data[0];
     // Un prix Stripe est immuable : si le tarif a changé, on en crée un nouveau qui reprend la lookup_key.
@@ -38,9 +48,24 @@ for (const p of PLAN_LIST) {
         product, currency: CURRENCY, unit_amount: amount, recurring: { interval },
         lookup_key: lookupKey, transfer_lookup_key: true, metadata: { plan: p.id, interval },
       });
-      console.log(`[stripe-setup] prix créé : ${p.name} ${interval === "year" ? "annuel" : "mensuel"} (${price.id})`);
-    } else console.log(`[stripe-setup] prix existant : ${p.name} ${interval === "year" ? "annuel" : "mensuel"} (${price.id})`);
-    ids[`STRIPE_PRICE_${p.id.toUpperCase()}${suffix}`] = price.id;
+      console.log(`[stripe-setup] prix créé : ${lookupKey} (${price.id})`);
+    } else console.log(`[stripe-setup] prix existant : ${lookupKey} (${price.id})`);
+    if (suffix !== null) ids[`STRIPE_PRICE_${p.id.toUpperCase()}${suffix}`] = price.id;
+  }
+}
+// Utilisateur supplémentaire : un produit et deux prix (mensuel, annuel) par plan à sièges fixes ; quantité = nombre d'utilisateurs en plus.
+for (const p of PLAN_LIST.filter((x) => x.extraSeatCents !== null)) {
+  const found = await stripe.products.search({ query: `metadata['plan']:'extra_seat_${p.id}' AND active:'true'`, limit: 1 }).catch(() => ({ data: [] }));
+  const product = found.data[0]?.id ?? (await stripe.products.create({ name: `LeadForge ${p.name} : utilisateur supplémentaire`, metadata: { plan: `extra_seat_${p.id}` } })).id;
+  for (const [interval, suffix] of [["month", ""], ["year", "_YEARLY"]]) {
+    const amount = extraSeatPriceCents(p, interval);
+    const lookupKey = extraSeatLookupKey(p, interval);
+    let price = (await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 })).data[0];
+    if (!price || price.unit_amount !== amount) {
+      price = await stripe.prices.create({ product, currency: CURRENCY, unit_amount: amount, recurring: { interval }, lookup_key: lookupKey, transfer_lookup_key: true, metadata: { plan: `extra_seat_${p.id}`, interval } });
+      console.log(`[stripe-setup] prix créé : ${lookupKey} (${price.id})`);
+    } else console.log(`[stripe-setup] prix existant : ${lookupKey} (${price.id})`);
+    ids[`STRIPE_PRICE_EXTRA_SEAT_${p.id.toUpperCase()}${suffix}`] = price.id;
   }
 }
 if (base) { console.log("[stripe-setup] stripe-mock : identifiants non écrits dans .env.local."); process.exit(0); }

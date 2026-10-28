@@ -32,6 +32,12 @@ export const pendingInputSchema = z.object({
     precision: z.enum(["housenumber", "street", "locality", "municipality", "manual_pin", "manual_coords"]),
   }).optional(),
 });
+export const PAST_APPT_MESSAGE = "Ce créneau est dans le passé : choisissez une date et une heure à venir.";
+/** Début de RDV déjà écoulé (tolérance d'une minute pour le décalage d'horloge). Comme apply_dispatch (dispatch_past_slot). */
+export function isPastStart(startsAt: string | Date, now: Date = new Date()): boolean {
+  return new Date(startsAt).getTime() < now.getTime() - 60_000;
+}
+
 export const appointmentUpdateSchema = appointmentInputSchema.omit({ leadId: true }).extend({ id: z.uuid() });
 
 export const previewSchema = z.object({
@@ -44,6 +50,9 @@ export const previewSchema = z.object({
 });
 
 export const apptStatusSchema = z.object({ id: z.uuid(), status: z.enum(APPT_STATUSES) });
+/** Passer un RDV à « Confirmé » est le rôle du confirmateur (dispatch.manage) ; même règle en base (trigger appointments_confirm_guard). */
+export const CONFIRM_ONLY_MESSAGE = "Seul un confirmateur peut confirmer un rendez-vous.";
+export const canSetApptStatus = (status: ApptStatus, canDispatch: boolean): boolean => status !== "confirmed" || canDispatch;
 export const rangeSchema = z
   .object({ from: isoDate, to: isoDate, userIds: z.array(z.uuid()).max(50).optional(), leadId: z.uuid().optional() })
   .refine((r) => new Date(r.to).getTime() - new Date(r.from).getTime() <= 45 * 86_400_000, { message: "Période trop longue.", path: ["to"] });

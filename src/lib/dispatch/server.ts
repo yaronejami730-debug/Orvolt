@@ -4,6 +4,7 @@ import { assessPoint } from "@/lib/geo/resolve";
 import type { GeoPrecision } from "@/lib/geo/providers";
 import { createClient } from "@/lib/supabase/server";
 import { leadName } from "@/lib/leads/types";
+import { isFieldRole } from "@/lib/permissions";
 import { planDispatch } from "./engine";
 import { cacheLegs, configuredRouting, resolveMatrix } from "@/lib/routing/service";
 import type { RoutingProvider } from "@/lib/routing/types";
@@ -57,6 +58,8 @@ export interface DispatchContext {
   unavailability: Unavailability[];
   /** RDV répartis non verrouillés dont la position a été corrigée. */
   flagged: PendingRow[];
+  /** Parmi les RDV à rééquilibrer : ceux signalés par une indisponibilité (les autres : position corrigée). */
+  flaggedUnavail: number;
   /** RDV à attribuer dont la position vient d'être corrigée (bandeau « relancer la répartition »). */
   fixedPending: number;
   /** Limites de chargement atteintes (jamais silencieuses) : nombre total en base quand il dépasse ce qui est pris en compte. */
@@ -103,10 +106,14 @@ export async function loadContext(supabase: SB, orgId: string, opts: { simulatio
   };
   const memberIds = (zones ?? []).map((z) => z.user_id);
   const [{ data: members }, { data: profiles }] = await Promise.all([
-    memberIds.length ? supabase.from("memberships").select("user_id").eq("org_id", orgId).eq("status", "active").in("user_id", memberIds) : Promise.resolve({ data: [] as { user_id: string }[] }),
+    memberIds.length ? supabase.from("memberships").select("user_id, role:roles(is_admin, is_field, permissions)").eq("org_id", orgId).eq("status", "active").in("user_id", memberIds) : Promise.resolve({ data: [] as { user_id: string; role: { is_admin: boolean; is_field: boolean; permissions: string[] } | null }[] }),
     memberIds.length ? supabase.from("profiles").select("id, full_name, email").in("id", memberIds) : Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string | null }[] }),
   ]);
-  const active = new Set((members ?? []).map((m) => m.user_id));
+  // Seuls les membres actifs d'un rôle terrain (commerciaux) reçoivent des RDV : une zone résiduelle d'un admin /
+  // prospecteur / confirmateur est ignorée (même règle que apply_dispatch via is_field_role).
+  const active = new Set(((members ?? []) as unknown as { user_id: string; role: { is_admin: boolean; is_field: boolean; permissions: string[] } | null }[])
+    .filter((m) => m.role && isFieldRole({ is_admin: m.role.is_admin, is_field: m.role.is_field, permissions: m.role.permissions ?? [] }))
+    .map((m) => m.user_id));
   const name = new Map((profiles ?? []).map((p) => [p.id, p.full_name ?? p.email ?? "—"]));
   const reps: RepRow[] = (zones ?? []).filter((z) => active.has(z.user_id)).map((z) => ({
     id: z.user_id, name: name.get(z.user_id) ?? "—", base: { lat: z.base_lat, lng: z.base_lng }, radiusKm: Number(z.radius_km),
@@ -155,9 +162,9 @@ export async function loadContext(supabase: SB, orgId: string, opts: { simulatio
     unavailTotal = overLimit(unCount, MAX_UNAVAILABILITY);
     unavailability = (un ?? []).map((u) => ({ repId: u.user_id, day: u.day, startMin: u.start_min, endMin: u.end_min }));
   }
-  const { data: fl } = await supabase.from("appointments").select("id, lead_id, status, location_address, lat, lng, geo_precision, geo_accepted, wish_from, wish_to, starts_at, ends_at, assigned_to, lead:leads(first_name, last_name, company)")
+  const { data: fl } = await supabase.from("appointments").select("id, lead_id, status, location_address, lat, lng, geo_precision, geo_accepted, wish_from, wish_to, starts_at, ends_at, assigned_to, rebalance_reason, lead:leads(first_name, last_name, company)")
     .eq("org_id", orgId).eq("is_simulation", sim).eq("dispatch_status", "assigned").eq("needs_rebalance", true).eq("locked_by_dispatcher", false).in("status", ["planned", "confirmed"]).gte("starts_at", new Date().toISOString()).limit(100);
-  const flagged: PendingRow[] = ((fl ?? []) as unknown as { id: string; lead_id: string; status: string; location_address: string | null; lat: number | null; lng: number | null; geo_precision: GeoPrecision | null; geo_accepted: boolean; wish_from: string | null; wish_to: string | null; starts_at: string; ends_at: string; assigned_to: string; lead: { first_name: string; last_name: string; company: string | null } | null }[]).map((r) => {
+  const flagged: PendingRow[] = ((fl ?? []) as unknown as { id: string; lead_id: string; status: string; location_address: string | null; lat: number | null; lng: number | null; geo_precision: GeoPrecision | null; geo_accepted: boolean; wish_from: string | null; wish_to: string | null; starts_at: string; ends_at: string; assigned_to: string; rebalance_reason: string | null; lead: { first_name: string; last_name: string; company: string | null } | null }[]).map((r) => {
     const st = new Date(r.starts_at);
     const en = new Date(r.ends_at);
     const day = localDay(st);
@@ -171,7 +178,8 @@ export async function loadContext(supabase: SB, orgId: string, opts: { simulatio
   });
   const { count: fixedPending } = await supabase.from("appointments").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("is_simulation", sim).eq("dispatch_status", "unassigned").eq("status", "confirmed").not("geo_fixed_at", "is", null);
   const truncated = { pending: overLimit(pendingTotal, MAX_PENDING), existing: existingTotal, unavailability: unavailTotal };
-  return { orgSettings, reps, pending, days, existing, unavailability, flagged, fixedPending: fixedPending ?? 0, truncated, simulation: sim };
+  const flaggedUnavail = ((fl ?? []) as unknown as { rebalance_reason: string | null }[]).filter((r) => r.rebalance_reason === "unavailability").length;
+  return { orgSettings, reps, pending, days, existing, unavailability, flagged, flaggedUnavail, fixedPending: fixedPending ?? 0, truncated, simulation: sim };
 }
 
 /** Sépare les RDV confirmés répartissables de ceux « à vérifier » (raison en français). */

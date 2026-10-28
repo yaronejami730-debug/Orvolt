@@ -28,7 +28,7 @@ export function ZoneEditor({ userId, name, zone, label }: { userId: string; name
   const [pending, start] = useTransition();
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)} aria-label={`Zone de ${name}`}><MapPin className="size-3.5" /> {label ?? "Zone"}</Button>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} aria-label={label ? `${label} (zone de ${name})` : `Zone de ${name}`}><MapPin className="size-3.5" /> {label ?? "Zone"}</Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>

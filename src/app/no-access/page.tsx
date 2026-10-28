@@ -1,11 +1,13 @@
 import { ShieldOff } from "lucide-react";
 import { logoutAction } from "@/app/(auth)/actions";
+import { Logo } from "@/components/marketing/logo";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 
 export default function NoAccessPage() {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md items-center px-4">
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-6 px-4">
+      <Logo size="lg" href={null} />
       <EmptyState
         icon={ShieldOff}
         title="Aucune organisation active"

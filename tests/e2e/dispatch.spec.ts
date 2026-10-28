@@ -141,7 +141,7 @@ test("super admin : simulation -> À vérifier (corrections) -> aperçu -> valid
   await expect(page.getByTestId("routing-banner")).toContainText(/OSRM|test/);
   await expect(page.getByTestId("leg").first()).toContainText(/\d+ min · [\d.]+ km/);
   await expect(page.getByTestId("open-route").first()).toHaveAttribute("href", /google\.com\/maps\/dir/);
-  await expect(page.getByTestId("gauge").first()).toContainText(/\d\/4/);
+  await expect(page.getByTestId("gauge").first()).toContainText(/\d RDV sur 4/);
   const stillPending = await admin.from("appointments").select("id", { count: "exact", head: true }).eq("org_id", id).eq("is_simulation", true).eq("dispatch_status", "unassigned").eq("status", "confirmed");
   expect(stillPending.count).toBe(10);
   await page.screenshot({ path: "test-results/dispatch-desktop.png", fullPage: true });
@@ -446,7 +446,7 @@ test("au-delà du confort (6e RDV) : proposé seulement, case décochée, décis
   await page.goto("/agenda/repartition");
   await page.getByTestId("dispatch-run").click();
   await expect(page.getByTestId("proposal")).toBeVisible();
-  await expect(page.getByTestId("gauge").first()).toContainText(/\d\/4/);
+  await expect(page.getByTestId("gauge").first()).toContainText(/\d RDV sur 4/);
   const fifth = page.getByTestId("fifth");
   await expect(fifth).toBeVisible();
   await expect(fifth).toContainText(/6e RDV : journée chargée/);

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { SESSION_COOKIE_FLAGS } from "@/lib/supabase/cookie-flags";
 
 export async function createClient() {
   const store = await cookies();
@@ -8,7 +9,7 @@ export async function createClient() {
       getAll: () => store.getAll(),
       setAll(list) {
         try {
-          list.forEach(({ name, value, options }) => store.set(name, value, options));
+          list.forEach(({ name, value, options }) => store.set(name, value, { ...options, ...SESSION_COOKIE_FLAGS }));
         } catch {
           // Appelé depuis un Server Component : le middleware rafraîchit la session.
         }

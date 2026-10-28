@@ -125,7 +125,9 @@ export async function dryRunAction(input: unknown): Promise<ActionResult<Report>
   if (!job || !job.file_path || !["uploaded", "validated"].includes(job.status)) return { ok: false, error: "Import introuvable ou déjà exécuté." };
   try {
     const defs = await loadFieldDefs(s.org.id);
-    const parsed = parseCsv(new Uint8Array(await (await createAdminClient().storage.from(BUCKET).download(job.file_path)).data!.arrayBuffer()));
+    const dl = await createAdminClient().storage.from(BUCKET).download(job.file_path);
+    if (dl.error || !dl.data) return { ok: false, error: "Le fichier n'est plus disponible : renvoyez-le." };
+    const parsed = parseCsv(new Uint8Array(await dl.data.arrayBuffer()));
     const mapping = p.data.mapping as Mapping;
     const bad = checkMapping(parsed.headers, mapping, defs, s, p.data.options.fieldDefaults);
     if (bad) return { ok: false, error: bad };

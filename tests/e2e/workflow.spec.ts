@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
+import { signupViaForm } from "./helpers";
 import { expect, test } from "@playwright/test";
 
 config({ path: ".env.local", quiet: true });
@@ -18,16 +19,8 @@ const names = (page: import("@playwright/test").Page) => page.locator('[data-tes
 
 test("template Énergies : statuts, champs, puis personnalisation", async ({ page }) => {
   // Inscription avec le template Énergies
-  await page.goto("/signup");
-  await page.getByLabel("Votre nom").fill(owner.name);
-  await page.getByLabel("Nom de l'entreprise").fill(owner.org);
-  await page.getByLabel("E-mail").fill(owner.email);
-  await page.getByLabel("Mot de passe").fill(owner.password);
-  await page.getByTestId("template-energie").click();
-  await page.getByRole("button", { name: "Créer mon espace" }).click();
-
-  // Onboarding : résumé du template
-  await expect(page).toHaveURL(/\/onboarding/);
+  await signupViaForm(page, { first: "Test", last: owner.name, email: owner.email, password: owner.password, org: owner.org, phone: "0612345678", siret: "73282932000074" });
+  await expect(page).toHaveURL(/\/onboarding$/);
   await expect(page.getByRole("heading", { name: /Énergies.*prêt/ })).toBeVisible();
   await expect(page.getByTestId("onboarding-statuses")).toContainText("Devis envoyé");
   await expect(page.getByTestId("onboarding-fields")).toContainText("Type de chauffage");

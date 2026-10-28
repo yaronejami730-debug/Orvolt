@@ -1,5 +1,6 @@
 import { Check, MapPin, Phone, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LogoImage } from "./logo";
 
 /* Maquette du pipeline : un lead glisse de « Devis envoyé » à « Signé » (boucle CSS de 10 s, voir marketing.css). */
 
@@ -29,7 +30,7 @@ function Mini({ lead, className, style }: { lead: Lead; className?: string; styl
       <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground"><MapPin className="size-3 shrink-0" aria-hidden />{lead.city}</p>
       <p className="mt-2 hidden truncate text-[11px] text-muted-foreground sm:block">{lead.job}</p>
       <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-        <span className="grid size-5 place-items-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground">{lead.who}</span>
+        <span className="grid size-5 place-items-center rounded-full bg-muted text-[9px] font-semibold text-foreground">{lead.who}</span>
         {lead.amount && <span className="hidden truncate font-medium tabular-nums sm:block">{lead.amount}</span>}
       </div>
     </div>
@@ -50,7 +51,7 @@ export function ProductDemo() {
       <div className="mk-demo relative overflow-hidden rounded-[14px] border bg-background text-foreground">
         <div className="flex min-h-[340px] sm:min-h-[380px]">
           <aside className="hidden w-44 shrink-0 flex-col gap-1 border-r p-3 text-sm md:flex">
-            <p className="px-2 pb-3 font-semibold tracking-[-0.03em]">LeadForge</p>
+            <div className="px-2 pb-3"><LogoImage size="sm" /></div>
             {["Tableau de bord", "Leads", "Agenda", "Import"].map((l) => (
               <span key={l} className={cn("rounded-md px-2 py-1.5 text-[13px] text-muted-foreground", l === "Leads" && "bg-muted font-medium text-foreground")}>{l}</span>
             ))}

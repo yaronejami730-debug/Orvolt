@@ -1,9 +1,13 @@
 "use server";
 
+import { isFieldRole } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { mailAppointment } from "@/lib/notifications/appointment-mail";
 import { dashboardCache } from "@/lib/dashboard/cache";
 import { z } from "zod";
 import { guard, guardAny, mapDbError, type ActionResult } from "@/lib/action-guard";
+import { hasFeature, featureError } from "@/lib/billing/feature-guard";
 import { checkDistance, type DistanceResult, type ZoneLike } from "@/lib/geo/haversine";
 import { geocodeAddress } from "@/lib/geo/geocode";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -11,7 +15,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sessionCan, type AppSession } from "@/lib/session";
 import { fieldErrors, firstError } from "@/lib/validation/auth";
 import {
-  apptStatusSchema, appointmentInputSchema, appointmentUpdateSchema, pendingInputSchema, previewSchema, rangeSchema, zoneSchema, type ApptStatus,
+  PAST_APPT_MESSAGE, CONFIRM_ONLY_MESSAGE, canSetApptStatus, isPastStart, apptStatusSchema, appointmentInputSchema, appointmentUpdateSchema, pendingInputSchema, previewSchema, rangeSchema, zoneSchema, type ApptStatus,
 } from "@/lib/validation/appointments";
 import { guardClientPoint } from "@/lib/dispatch/point-guard";
 import { checkWishWindow, PENDING_RPC_ERRORS } from "@/lib/dispatch/pending";
@@ -61,7 +65,8 @@ async function assertScope(s: AppSession, supabase: SB, leadId: string, assigned
 }
 
 async function computeDistance(s: AppSession, supabase: SB, assignedTo: string, address: string | null | undefined) {
-  const zone = await loadZone(supabase, s.org.id, assignedTo);
+  // Contrôle des distances réservé à Business+ : sans le plan, aucune zone n'est appliquée (statut « no_zone »).
+  const zone = (await hasFeature(s.org.id, "distance_control")) ? await loadZone(supabase, s.org.id, assignedTo) : null;
   const geo = address && address.trim().length >= 3 ? await geocodeAddress(address) : { found: false as const, cached: false };
   const distance = checkDistance(geo.found ? { lat: geo.result.lat, lng: geo.result.lng } : null, zone);
   return { distance, geo, zone };
@@ -142,6 +147,7 @@ export async function createAppointmentAction(input: unknown): Promise<ActionRes
   if (!p.success) return invalid(p.error);
   const { s } = g;
   const d = p.data;
+  if (isPastStart(d.startsAt)) return { ok: false, error: PAST_APPT_MESSAGE, fieldErrors: { startsAt: PAST_APPT_MESSAGE } };
   const supabase = await createClient();
   const scope = await assertScope(s, supabase, d.leadId, d.assignedTo);
   if (scope) return { ok: false, error: scope };
@@ -163,6 +169,7 @@ export async function createAppointmentAction(input: unknown): Promise<ActionRes
   await writeDistance(s, data.id, distance, geo, d.overrideReason);
   const { data: lead } = await supabase.from("leads_api").select("first_name, last_name, company").eq("id", d.leadId).maybeSingle();
   await notifyAssignee(s, d.assignedTo, d.leadId, lead ? leadName(lead) : "Lead", start.toISOString(), "Nouveau rendez-vous").catch(() => undefined);
+  after(() => mailAppointment("assigned", data.id, s.user.id)); // e-mail à l'assigné (jamais à soi-même) ; un échec ne bloque rien
   dashboardCache.clear();
   revalidatePath("/agenda");
   revalidatePath(`/leads/${d.leadId}`);
@@ -221,8 +228,13 @@ export async function updateAppointmentAction(input: unknown): Promise<ActionRes
   const { s } = g;
   const d = p.data;
   const supabase = await createClient();
-  const { data: cur } = await supabase.from("appointments").select("lead_id, status").eq("id", d.id).eq("org_id", s.org.id).maybeSingle();
+  const { data: cur } = await supabase.from("appointments").select("lead_id, status, starts_at, assigned_to").eq("id", d.id).eq("org_id", s.org.id).maybeSingle();
   if (!cur) return { ok: false, error: "Rendez-vous introuvable." };
+  // Déplacement dans le passé refusé (sauf RDV déjà réalisé / absent, ou début inchangé : simple correction de notes).
+  const unchangedStart = new Date(cur.starts_at).getTime() === new Date(d.startsAt).getTime();
+  if (isPastStart(d.startsAt) && !unchangedStart && cur.status !== "done" && cur.status !== "no_show") {
+    return { ok: false, error: PAST_APPT_MESSAGE, fieldErrors: { startsAt: PAST_APPT_MESSAGE } };
+  }
   const scope = await assertScope(s, supabase, cur.lead_id, d.assignedTo);
   if (scope) return { ok: false, error: scope };
   const { distance, geo } = await computeDistance(s, supabase, d.assignedTo, d.location);
@@ -240,6 +252,14 @@ export async function updateAppointmentAction(input: unknown): Promise<ActionRes
   if (error) return mapApptError(error);
   if (!data?.length) return { ok: false, error: "Modification refusée." };
   await writeDistance(s, d.id, distance, geo, d.overrideReason);
+  // Réattribué : l'ancien commercial est prévenu de l'annulation ; déplacé ou réattribué : le nouvel assigné reçoit le créneau.
+  const reassigned = !!cur.assigned_to && cur.assigned_to !== d.assignedTo;
+  if (cur.status !== "cancelled" && (reassigned || !cur.starts_at || new Date(cur.starts_at).getTime() !== start.getTime())) {
+    after(async () => {
+      if (reassigned && cur.starts_at) await mailAppointment("cancelled", d.id, s.user.id, { userId: cur.assigned_to, startsAt: cur.starts_at });
+      await mailAppointment("assigned", d.id, s.user.id);
+    });
+  }
   dashboardCache.clear();
   revalidatePath("/agenda");
   revalidatePath(`/leads/${cur.lead_id}`);
@@ -251,10 +271,12 @@ export async function setAppointmentStatusAction(input: unknown): Promise<Action
   if ("error" in g) return { ok: false, error: g.error };
   const p = apptStatusSchema.safeParse(input);
   if (!p.success) return invalid(p.error);
+  if (!canSetApptStatus(p.data.status, sessionCan(g.s, "dispatch.manage"))) return { ok: false, error: CONFIRM_ONLY_MESSAGE };
   const supabase = await createClient();
   const { data, error } = await supabase.from("appointments").update({ status: p.data.status }).eq("id", p.data.id).eq("org_id", g.s.org.id).select("lead_id");
   if (error) return mapApptError(error); // réactiver un RDV annulé peut entrer en conflit
   if (!data?.length) return { ok: false, error: "Modification refusée." };
+  if (p.data.status === "cancelled") after(() => mailAppointment("cancelled", p.data.id, g.s.user.id));
   dashboardCache.clear();
   revalidatePath("/agenda");
   revalidatePath(`/leads/${data[0]!.lead_id}`);
@@ -294,10 +316,15 @@ export async function saveZoneAction(input: unknown): Promise<ActionResult> {
   const p = zoneSchema.safeParse(input);
   if (!p.success) return invalid(p.error);
   const { s } = g;
+  const locked = await featureError(s.org.id, "distance_control");
+  if (locked) return { ok: false, error: locked };
   if (p.data.userId !== s.user.id && !sessionCan(s, "members.manage")) return { ok: false, error: "Permission insuffisante." };
   const geo = await geocodeAddress(p.data.baseAddress);
   if (!geo.found) return { ok: false, error: "Adresse introuvable.", fieldErrors: { baseAddress: "Adresse introuvable : précisez la rue et la ville." } };
   const supabase = await createClient();
+  // Une zone n'a de sens que pour un rôle terrain (commercial) : les autres ne se déplacent pas.
+  const target = (await supabase.from("memberships").select("role:roles(is_admin, is_field, permissions)").eq("org_id", s.org.id).eq("user_id", p.data.userId).eq("status", "active").maybeSingle()).data as { role: { is_admin: boolean; is_field: boolean; permissions: string[] } | null } | null;
+  if (!target?.role || !isFieldRole({ is_admin: target.role.is_admin, is_field: target.role.is_field, permissions: target.role.permissions ?? [] })) return { ok: false, error: "Seuls les commerciaux ont une zone d'intervention." };
   const { error } = await supabase.from("sales_zones").upsert(
     { org_id: s.org.id, user_id: p.data.userId, base_address: p.data.baseAddress, base_lat: geo.result.lat, base_lng: geo.result.lng, radius_km: p.data.radiusKm, active: p.data.active },
     { onConflict: "org_id,user_id" },

@@ -23,7 +23,7 @@ describe("correctifs S7 (boucle 1)", () => {
     expect(read("src/app/(app)/settings/roles/actions.ts").match(/isWritable\(s\.org\.id\)/g)).toHaveLength(2);
   });
   it("Open Graph : image déclarée sur la landing et les tarifs ; URL du site depuis NEXT_PUBLIC_APP_URL", () => {
-    for (const f of ["src/app/(marketing)/page.tsx", "src/app/(marketing)/pricing/page.tsx"]) expect(read(f)).toContain('url: "/opengraph-image"');
+    expect(read("src/lib/seo.ts")).toContain('url: "/opengraph-image"'); // pageMetadata, utilisé par la landing et les tarifs
     expect(read("src/lib/site.ts")).toContain("NEXT_PUBLIC_APP_URL");
     expect(read(".env.example")).toMatch(/OBLIGATOIRE en production[^\n]*\nNEXT_PUBLIC_APP_URL=/);
   });
