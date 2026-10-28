@@ -1,0 +1,9 @@
+node_modules
+.next
+.claude
+.env*
+!.env.example
+*.log
+gocardless-design
+test-results
+playwright-report
