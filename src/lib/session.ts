@@ -62,9 +62,7 @@ const ORG_COLS = "id, name, slug, template, plan, subscription_status, trial_end
 /** Session applicative (utilisateur + org active + rôle + permissions). Mise en cache par requête. */
 export const getSession = cache(async (): Promise<AppSession | null> => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await currentUser(supabase);
   if (!user) return null;
 
   const [{ data: rows }, { data: profile }] = await Promise.all([
@@ -99,11 +97,19 @@ export const getSession = cache(async (): Promise<AppSession | null> => {
 export async function requireSession(): Promise<AppSession> {
   const session = await getSession();
   if (session) return session;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await currentUser(await createClient());
   redirect(user ? "/no-access" : "/login");
+}
+
+/**
+ * Utilisateur authentifié d'après le JWT de session, vérifié localement (clé publique du projet, en cache dans le processus) :
+ * aucun aller-retour vers le serveur Auth, contrairement à getUser(). Les champs lus (sub, email) sont signés.
+ */
+async function currentUser(supabase: Awaited<ReturnType<typeof createClient>>): Promise<{ id: string; email: string } | null> {
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+  if (!claims?.sub) return null;
+  return { id: claims.sub, email: typeof claims.email === "string" ? claims.email : "" };
 }
 
 export function sessionCan(session: AppSession, perm: Permission): boolean {

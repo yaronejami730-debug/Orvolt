@@ -5,10 +5,14 @@ export type LeadsView = "kanban" | "table";
 
 export const DEFAULT_PARAMS: ListParams = listParamsSchema.parse({});
 
-/** Sérialise les filtres dans l'URL (court : uniquement ce qui diffère des valeurs par défaut). */
-export function paramsToSearch(p: ListParams, view: LeadsView): string {
+/**
+ * Sérialise les filtres dans l'URL (court : uniquement ce qui diffère des valeurs par défaut).
+ * La vue (kanban/tableau) n'y est écrite que si elle est fournie : c'est une préférence locale (localStorage) ; elle reste
+ * lue depuis l'URL (`?view=table`) pour les liens partagés et les tests.
+ */
+export function paramsToSearch(p: ListParams, view?: LeadsView): string {
   const u = new URLSearchParams();
-  u.set("view", view);
+  if (view) u.set("view", view);
   if (p.statuses.length) u.set("statuses", p.statuses.join(","));
   if (p.sources.length) u.set("sources", p.sources.join(","));
   if (p.assigned.length) u.set("assigned", p.assigned.join(","));

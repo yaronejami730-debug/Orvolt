@@ -31,12 +31,12 @@ export default async function EnergyInstallersPage() {
       />
       <Block
         id="parcours"
-        title="De l'appel à la visite technique"
+        title="De l'appel au rendez-vous, du rendez-vous à la pose"
         items={[
           { title: "Le prospecteur qualifie", text: "Il suit une trame d'appel préparée par vos soins et ne voit que ses leads." },
           { title: "Le confirmateur valide le rendez-vous", text: "Il confirme les rendez-vous posés avant qu'ils partent chez un commercial." },
-          { title: "Le moteur répartit", text: "Il propose le commercial et l'heure de chaque visite selon la zone, le temps de route réel et les horaires. Vous voyez la proposition avant de la valider." },
-          { title: "Le commercial suit son agenda", text: "Il retrouve ses visites de la journée avec le trajet entre chacune, fait avancer le lead jusqu'au devis envoyé puis signé." },
+          { title: "Le moteur répartit", text: "Il propose le commercial et l'heure de chaque rendez-vous selon la zone, le temps de route réel et les horaires. Vous voyez la proposition avant de la valider." },
+          { title: "Le commercial suit son agenda", text: "Il retrouve ses rendez-vous de la journée avec le trajet entre chacune, fait avancer le lead jusqu'au devis envoyé puis signé." },
         ]}
       />
       <Block

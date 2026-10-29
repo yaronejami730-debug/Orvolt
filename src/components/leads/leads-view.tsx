@@ -47,7 +47,12 @@ export function LeadsView({ meta }: { meta: LeadsMeta }) {
   }, []);
   useEffect(() => {
     if (!ready) return;
-    window.history.replaceState(null, "", `/leads?${paramsToSearch(params, view)}`);
+    // Filtres reflétés dans l'URL sans passer par le routeur Next : son history.replaceState (patché) recalcule l'arbre avec les
+    // paramètres de requête, refait un aller-retour serveur pour la page et vide le cache des écrans préchargés par le menu.
+    // L'état d'historique de Next est conservé tel quel (retour/avance restent gérés par lui). Rien n'est réécrit si l'URL est déjà bonne.
+    const search = paramsToSearch(params);
+    const next = search ? `/leads?${search}` : "/leads";
+    if (window.location.pathname + window.location.search !== next) History.prototype.replaceState.call(window.history, window.history.state, "", next);
     try { localStorage.setItem(VIEW_KEY, view); } catch { /* facultatif */ }
   }, [params, view, ready]);
   // Recherche avec délai.

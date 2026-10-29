@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { PrefetchKind } from "next/dist/client/components/router-reducer/router-reducer-types";
 import { useEffect, useState, useTransition } from "react";
 import { CalendarDays, CheckSquare, ClipboardCheck, LayoutDashboard, LogOut, Menu, Route, Settings, Upload, Users, X, type LucideIcon } from "lucide-react";
 import { logoutAction } from "@/app/(auth)/actions";
@@ -82,6 +83,7 @@ function SidebarContent({ props, onNavigate }: { props: ShellProps; onNavigate?:
             <Link
               key={href}
               href={href}
+              prefetch
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={cn(
@@ -102,7 +104,18 @@ function SidebarContent({ props, onNavigate }: { props: ShellProps; onNavigate?:
 export function AppShell(props: ShellProps) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
   useEffect(() => setOpen(false), [pathname]);
+  // Après chaque navigation, les écrans du menu sont (re)préchargés en entier : l'écran que l'on vient de quitter (jamais
+  // préchargé par son lien, puisqu'il était la page courante) et tous les autres après une action serveur qui a vidé le cache.
+  // Next ne refait pas la requête quand l'entrée en cache est encore fraîche.
+  useEffect(() => {
+    for (const n of NAV) {
+      if ((n.settings && !props.showSettings) || (n.import && !props.showImport) || (n.dispatch && !props.showDispatch)) continue;
+      if (n.href === pathname) continue;
+      router.prefetch(n.href, { kind: PrefetchKind.FULL });
+    }
+  }, [pathname, router, props.showSettings, props.showImport, props.showDispatch]);
 
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[240px_1fr]">
@@ -160,6 +173,9 @@ export function AppShell(props: ShellProps) {
               <Link
                 key={href}
                 href={href}
+                // Pages de navigation préchargées en entier (données comprises) dès l'affichage du menu : le passage d'un écran à
+                // l'autre se fait sans attendre le serveur. Les données vivantes (leads, rendez-vous, KPI) sont chargées par react-query.
+                prefetch
                 aria-current={active ? "page" : undefined}
                 // Beaucoup d'entrées : la barre défile au lieu d'écraser les libellés ; l'entrée active reste visible.
                 ref={(el) => { if (active && el) el.scrollIntoView({ inline: "center", block: "nearest" }); }}

@@ -53,8 +53,8 @@ export const PUBLIC_PAGES: PublicPage[] = [
   {
     path: "/solutions/installateurs-energie",
     title: "CRM pour installateurs solaire et pompe à chaleur",
-    description: "Suivez vos leads de panneaux solaires, pompe à chaleur et isolation, planifiez les visites techniques et signez plus vite. Modèle énergie prêt à l'emploi.",
-    priority: 0.8, changeFrequency: "monthly", lastModified: "2026-10-28",
+    description: "Suivez vos leads solaire, pompe à chaleur et isolation, du rendez-vous à la pose, et signez plus vite. Modèle énergie prêt à l'emploi.",
+    priority: 0.8, changeFrequency: "monthly", lastModified: "2026-10-29",
   },
   {
     path: "/solutions/regies-prospection",

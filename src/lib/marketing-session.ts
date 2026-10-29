@@ -6,8 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 export const isSignedIn = cache(async (): Promise<boolean> => {
   try {
     const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    return !!data.user;
+    const { data } = await supabase.auth.getClaims();
+    return !!data?.claims;
   } catch {
     return false;
   }

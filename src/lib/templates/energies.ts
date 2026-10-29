@@ -4,7 +4,7 @@ export const energies: TemplateInput = {
   id: "energie",
   label: "Énergies",
   description: "Solaire, pompe à chaleur, isolation",
-  summary: "Un pipeline orienté visite technique et devis, avec les champs clés du logement (chauffage, surface, DPE).",
+  summary: "Un pipeline du rendez-vous à la pose, en passant par le devis, avec les champs clés du logement (chauffage, surface, DPE).",
   statuses: [
     { key: "nouveau", name: "Nouveau", color: "#3b82f6", kind: "normal", initial: true },
     { key: "a_qualifier", name: "À qualifier", color: "#6366f1", kind: "normal" },
@@ -27,7 +27,7 @@ export const energies: TemplateInput = {
   ],
   actions: [
     { status: "nouveau", type: "notify", config: { recipient: "role", roleName: "Confirmateur", message: "Nouveau lead à qualifier." }, enabled: true },
-    { status: "rdv_pris", type: "create_task", config: { title: "Préparer la visite technique", delay: 1, unit: "days", assignee: "assignee" }, enabled: true },
+    { status: "rdv_pris", type: "create_task", config: { title: "Préparer le rendez-vous", delay: 1, unit: "days", assignee: "assignee" }, enabled: true },
     { status: "signe", type: "notify", config: { recipient: "role", roleName: "Super administrateur", message: "Un dossier vient d'être signé." }, enabled: true },
   ],
   fields: [

@@ -357,7 +357,7 @@ export const MAIL_SAMPLES: { id: string; label: string; mail: () => MailBody }[]
     { id: "appt-customer", label: "Rappel de RDV au client", mail: () => appointmentCustomerReminderMail({ customerName: "Marc Lefèvre", companyName: "Énergies Durables SARL", startsAt: soon, address: "12 rue des Lilas, 69003 Lyon", agentName: "Julien Moreau", contactPhone: "04 72 00 00 00" }) },
     { id: "appt-cancelled", label: "RDV annulé", mail: () => appointmentCancelledMail(appt) },
     { id: "lead-assigned", label: "Lead attribué", mail: () => leadAssignedMail({ recipientName: "Camille", leadName: "Marc Lefèvre", source: "Meta Ads", phone: "06 12 34 56 78", city: "Lyon", leadUrl: `${siteUrl()}/leads` }) },
-    { id: "task", label: "Rappel de tâche", mail: () => taskReminderMail({ recipientName: "Camille", title: "Préparer la visite technique", dueAt: soon, leadName: "Marc Lefèvre" }) },
+    { id: "task", label: "Rappel de tâche", mail: () => taskReminderMail({ recipientName: "Camille", title: "Préparer le rendez-vous", dueAt: soon, leadName: "Marc Lefèvre" }) },
     { id: "sub-active", label: "Abonnement actif", mail: () => subscriptionActiveMail({ firstName: "Sam", planName: "Pro", seats: 8, nextBillingAt: new Date(Date.now() + 30 * 86_400_000) }) },
     { id: "onboarding-reminder", label: "Relance d'inscription", mail: () => onboardingReminderMail({ firstName: "Sam", orgName: "Énergies Durables SARL", step: 1, trialDays: 14, resumeUrl: link("/onboarding/plan"), stopUrl: link("/api/relance/stop?o=x&t=x") }) },
     { id: "trial-ending", label: "Fin d'essai proche", mail: () => trialEndingMail({ firstName: "Sam", orgName: "Énergies Durables SARL", daysLeft: 3, planName: "Pro" }) },

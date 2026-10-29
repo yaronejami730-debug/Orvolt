@@ -3,7 +3,7 @@ import type { TemplateInput } from "./types";
 export const artisanBtp: TemplateInput = {
   id: "btp",
   label: "Artisan BTP",
-  description: "Devis, chantiers, visites techniques",
+  description: "Devis, chantiers, rendez-vous",
   summary: "Du premier contact au devis accepté, avec les informations de chantier utiles aux artisans.",
   statuses: [
     { key: "nouveau", name: "Nouvelle demande", color: "#3b82f6", kind: "normal", initial: true },

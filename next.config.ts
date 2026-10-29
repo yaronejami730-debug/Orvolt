@@ -28,7 +28,13 @@ const nextConfig: NextConfig = {
   // Dossier de build alterné (NEXT_DIST_DIR) : évite les collisions entre builds/serveurs parallèles.
   distDir: process.env.NEXT_DIST_DIR || ".next",
   // Envoi de fichiers sur la fiche lead (10 Mo max validés côté serveur).
-  experimental: { serverActions: { bodySizeLimit: "12mb" } },
+  experimental: {
+    serverActions: { bodySizeLimit: "12mb" },
+    // Cache de navigation côté client : une page visitée il y a moins de 30 s se réaffiche instantanément (retour, va-et-vient
+    // entre Leads et Agenda…). Les actions serveur qui modifient des données appellent revalidatePath et vident ce cache.
+    // `static` borne aussi la durée de vie des pages préchargées en entier par le menu (prefetch) : 3 min au plus sans revisite.
+    staleTimes: { dynamic: 30, static: 180 },
+  },
   async redirects() {
     if (!canonicalHost) return [];
     return [{ source: "/:path*", has: [{ type: "host", value: `www.${canonicalHost.hostname}` }], destination: `${canonicalHost.origin}/:path*`, permanent: true }];

@@ -15,9 +15,17 @@ export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
   const s = await requireSession();
-  // Organisation en lecture seule : redirection douce de l'accueil vers la facturation (les autres écrans restent consultables).
-  if (sessionCan(s, "billing.manage") && !(await getEntitlement(s.org.id)).writable) redirect("/settings/billing");
   const greeting = `Bienvenue ${s.profile.full_name ?? ""} — ${s.org.name}`;
+  // Droits et données du tableau de bord lus en parallèle (un seul aller-retour) ; la redirection éventuelle est décidée après.
+  const all = sessionCan(s, "leads.view_all");
+  const supabase = await createClient();
+  const [ent, so, ms] = await Promise.all([
+    getEntitlement(s.org.id),
+    supabase.from("lead_sources").select("id, name").eq("org_id", s.org.id).order("created_at"),
+    all ? supabase.from("memberships").select("user_id").eq("org_id", s.org.id).eq("status", "active") : Promise.resolve({ data: [] as { user_id: string }[] }),
+  ]);
+  // Organisation en lecture seule : redirection douce de l'accueil vers la facturation (les autres écrans restent consultables).
+  if (sessionCan(s, "billing.manage") && !ent.writable) redirect("/settings/billing");
   const analytics = await hasFeature(s.org.id, "analytics");
   if (!sessionCan(s, "dashboard.view") || !analytics) {
     // Pas de statistiques pour ce rôle ou ce plan : accès rapide aux écrans de travail.
@@ -38,12 +46,6 @@ export default async function DashboardPage() {
       </div>
     );
   }
-  const all = sessionCan(s, "leads.view_all");
-  const supabase = await createClient();
-  const [so, ms] = await Promise.all([
-    supabase.from("lead_sources").select("id, name").eq("org_id", s.org.id).order("created_at"),
-    all ? supabase.from("memberships").select("user_id").eq("org_id", s.org.id).eq("status", "active") : Promise.resolve({ data: [] as { user_id: string }[] }),
-  ]);
   const { data: profiles } = all ? await supabase.from("profiles").select("id, full_name, email").in("id", (ms.data ?? []).map((m) => m.user_id)) : { data: [] };
   return (
     <div className="space-y-6">

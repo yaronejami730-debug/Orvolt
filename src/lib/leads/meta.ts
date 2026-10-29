@@ -9,7 +9,7 @@ import type { LeadsMeta } from "./types";
 export async function loadLeadsMeta(s: AppSession): Promise<LeadsMeta> {
   const supabase = await createClient();
   const org = s.org.id;
-  const [st, so, me, fi, tr, gr, cd] = await Promise.all([
+  const [st, so, me, fi, tr, gr, cd, writable] = await Promise.all([
     supabase.from("statuses").select("id, name, color, kind, position, is_initial").eq("org_id", org).order("position"),
     supabase.from("lead_sources").select("id, name, archived").eq("org_id", org).order("created_at"),
     supabase.from("memberships").select("user_id").eq("org_id", org).eq("status", "active"),
@@ -17,6 +17,7 @@ export async function loadLeadsMeta(s: AppSession): Promise<LeadsMeta> {
     supabase.from("status_transitions").select("from_status_id, to_status_id, role_id").eq("org_id", org),
     supabase.from("status_role_grants").select("status_id, can_place, can_create").eq("org_id", org).eq("role_id", s.role.id),
     supabase.from("call_domains").select("id, name").eq("org_id", org).eq("active", true).order("position"),
+    isWritable(org),
   ]);
   const initialId = ((st.data ?? []) as { id: string; is_initial: boolean }[]).find((x) => x.is_initial)?.id;
   const allIds = ((st.data ?? []) as { id: string }[]).map((x) => x.id);
@@ -37,7 +38,7 @@ export async function loadLeadsMeta(s: AppSession): Promise<LeadsMeta> {
     userId: s.user.id,
     can: {
       // Lecture seule (abonnement inactif) : pas de création possible, inutile d'ouvrir le formulaire.
-      create: sessionCan(s, "leads.create") && (await isWritable(org)),
+      create: sessionCan(s, "leads.create") && writable,
       edit: sessionCan(s, "leads.edit"),
       delete: sessionCan(s, "leads.delete"),
       appointments: sessionCan(s, "appointments.manage_all") ? "all" : sessionCan(s, "appointments.manage_own") ? "own" : null,

@@ -24,9 +24,10 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims : signature du JWT vérifiée localement (clé publique ES256 du projet, mise en cache par le processus),
+  // sans aller-retour vers le serveur Auth à chaque requête ; le jeton expiré est rafraîchi et les cookies réécrits.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims ?? null;
   const { pathname } = request.nextUrl;
 
   if (!user && !isPublicPath(pathname)) {

@@ -19,13 +19,16 @@ export default async function AgendaPage() {
   const s = await requireSession();
   const all = sessionCan(s, "appointments.manage_all");
   if (!all && !sessionCan(s, "appointments.manage_own")) return <AccessDenied />;
-  const zonesOn = await hasFeature(s.org.id, "distance_control");
   const supabase = await createClient();
-  const { data: ms } = await supabase.from("memberships").select("user_id").eq("org_id", s.org.id).eq("status", "active");
+  // Lectures indépendantes en parallèle (un seul aller-retour), puis les profils des membres.
+  const [zonesOn, { data: ms }, { data: zone }] = await Promise.all([
+    hasFeature(s.org.id, "distance_control"),
+    supabase.from("memberships").select("user_id").eq("org_id", s.org.id).eq("status", "active"),
+    supabase.from("sales_zones").select("base_address, radius_km, active").eq("org_id", s.org.id).eq("user_id", s.user.id).maybeSingle(),
+  ]);
   const { data: profiles } = await supabase.from("profiles").select("id, full_name, email").in("id", (ms ?? []).map((m) => m.user_id));
   const members = (profiles ?? []).map((p) => ({ id: p.id, name: p.full_name ?? p.email ?? "—" })).filter((m) => all || m.id === s.user.id);
   const colors = Object.fromEntries(members.map((m, i) => [m.id, COLORS[i % COLORS.length]!]));
-  const { data: zone } = await supabase.from("sales_zones").select("base_address, radius_km, active").eq("org_id", s.org.id).eq("user_id", s.user.id).maybeSingle();
   return (
     <div className="space-y-6">
       <PageHeader title="Agenda" description="Vos rendez-vous, avec contrôle de la distance à votre zone d'intervention."
