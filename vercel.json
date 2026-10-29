@@ -1,7 +1,16 @@
 {
   "framework": "nextjs",
   "crons": [
-    { "path": "/api/cron/maintenance", "schedule": "30 3 * * *" },
-    { "path": "/api/cron/premium-pricing", "schedule": "0 4 * * *" }
+    {
+      "path": "/api/cron/maintenance",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/premium-pricing",
+      "schedule": "0 4 * * *"
+    }
+  ],
+  "regions": [
+    "dub1"
   ]
 }

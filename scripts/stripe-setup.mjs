@@ -23,7 +23,7 @@ const stripe = new Stripe(key || "sk_test_mock", opts);
 async function ensureProduct(p) {
   const found = await stripe.products.search({ query: `metadata['plan']:'${p.id}' AND active:'true'`, limit: 1 }).catch(() => ({ data: [] }));
   if (found.data[0]) return found.data[0].id;
-  const product = await stripe.products.create({ name: `LeadForge ${p.name}`, description: p.seats === null ? "Utilisateurs illimités" : `${p.seats} utilisateurs`, metadata: { plan: p.id, seats: p.seats === null ? "unlimited" : String(p.seats) } });
+  const product = await stripe.products.create({ name: `Orvolt ${p.name}`, description: p.seats === null ? "Utilisateurs illimités" : `${p.seats} utilisateurs`, metadata: { plan: p.id, seats: p.seats === null ? "unlimited" : String(p.seats) } });
   return product.id;
 }
 
@@ -56,7 +56,7 @@ for (const p of PLAN_LIST) {
 // Utilisateur supplémentaire : un produit et deux prix (mensuel, annuel) par plan à sièges fixes ; quantité = nombre d'utilisateurs en plus.
 for (const p of PLAN_LIST.filter((x) => x.extraSeatCents !== null)) {
   const found = await stripe.products.search({ query: `metadata['plan']:'extra_seat_${p.id}' AND active:'true'`, limit: 1 }).catch(() => ({ data: [] }));
-  const product = found.data[0]?.id ?? (await stripe.products.create({ name: `LeadForge ${p.name} : utilisateur supplémentaire`, metadata: { plan: `extra_seat_${p.id}` } })).id;
+  const product = found.data[0]?.id ?? (await stripe.products.create({ name: `Orvolt ${p.name} : utilisateur supplémentaire`, metadata: { plan: `extra_seat_${p.id}` } })).id;
   for (const [interval, suffix] of [["month", ""], ["year", "_YEARLY"]]) {
     const amount = extraSeatPriceCents(p, interval);
     const lookupKey = extraSeatLookupKey(p, interval);

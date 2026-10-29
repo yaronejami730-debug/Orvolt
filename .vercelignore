@@ -7,3 +7,6 @@ node_modules
 gocardless-design
 test-results
 playwright-report
+.next-*
+data/routing
+tsconfig.tsbuildinfo
